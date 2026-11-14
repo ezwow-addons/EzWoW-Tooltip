@@ -356,7 +356,6 @@ local function snapshotLine(tipFrame, tipName, lineIdx)
     local lr, lg, lb, la = leftRegion:GetTextColor()
     if PlatformBridge.anysecret(leftText, lr, lg, lb, la) then return nil end
     local lineCopy = { leftText = leftText, leftColor = { lr or 1, lg or 1, lb or 1, la or 1 }, leftShown = leftRegion:IsShown() }
-    if leftRegion.GetWordWrap then lineCopy.leftWrap = leftRegion:GetWordWrap() end
     if rightRegion then
         local rightText = rightRegion:GetText()
         local rr, rg, rb, ra = rightRegion:GetTextColor()
@@ -375,7 +374,8 @@ local function writeLine(tipFrame, tipName, lineIdx, lineCopy)
     if not leftRegion then return end
     leftRegion:SetText(lineCopy.leftText)
     leftRegion:SetTextColor(unpackValues(lineCopy.leftColor))
-    if lineCopy.leftWrap ~= nil and leftRegion.SetWordWrap then leftRegion:SetWordWrap(lineCopy.leftWrap) end
+    -- word wrap is left alone: the game reuses these rows for later tooltips,
+    -- and a row set to no-wrap cuts every long line it shows later with "..."
     if lineCopy.leftShown then leftRegion:Show() else leftRegion:Hide() end
     if rightRegion then
         rightRegion:SetText(lineCopy.rightText)
@@ -385,7 +385,7 @@ local function writeLine(tipFrame, tipName, lineIdx, lineCopy)
 end
 
 local ATTRIBUTION_LINE = {
-    leftText = " ", leftColor = { 0, 0, 0, 1 }, leftShown = true, leftWrap = false,
+    leftText = " ", leftColor = { 0, 0, 0, 1 }, leftShown = true,
     rightText = TooltipEngine.ATTRIBUTION_TEXT, rightColor = { ATTRIBUTION_R, ATTRIBUTION_G, ATTRIBUTION_B, 1 }, rightShown = true,
 }
 

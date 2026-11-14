@@ -165,6 +165,16 @@ function UnitProfileFormatter.titleParts(name, pvpName)
     return titleStr, coordPos > 1 
 end
 
+-- UnitPVPName (title + name) comes without the surname for far-away players:
+-- put the full name back in place of the first name, keeping the title.
+function UnitProfileFormatter.withSurname(pvpName, fullName, firstName)
+    if type(pvpName) ~= "string" or pvpName == "" then return fullName end
+    if type(fullName) ~= "string" or fullName == "" or pvpName:find(fullName, 1, true) then return pvpName end
+    local at = type(firstName) == "string" and firstName ~= "" and pvpName:find(firstName, 1, true)
+    if not at then return fullName end
+    return pvpName:sub(1, at - 1) .. fullName .. pvpName:sub(at + #firstName)
+end
+
 function UnitProfileFormatter.groupZone(unit)
     if not IsInGroup() then return end
     if not (nosecret(UnitInParty(unit)) or nosecret(UnitInRaid(unit))) then return end
@@ -230,10 +240,11 @@ function UnitProfileFormatter.playerRows(info, lineList, levelIdx)
     local raid = GetRaidTargetIndex and nosecret(GetRaidTargetIndex(unit))
     local raidIcon = raid and _G.ICON_LIST and _G.ICON_LIST[raid] and (_G.ICON_LIST[raid] .. "0|t")
 
-    local rawDisplayName = nosecret(UnitPVPName(unit)) or info.name or info.firstName or UnitProfileFormatter.plain(lineList[1].left) or ""
+    local rawDisplayName = UnitProfileFormatter.withSurname(nosecret(UnitPVPName(unit)), info.name, info.firstName)
+        or info.name or info.firstName or UnitProfileFormatter.plain(lineList[1].left) or ""
     rawDisplayName = strtrim((rawDisplayName:gsub("^%s*<[^>]+>%s*", ""):gsub("%s*<[^>]+>%s*$", "")))
     if rawDisplayName == "" then
-        rawDisplayName = info.firstName or info.name or UnitProfileFormatter.plain(lineList[1].left) or ""
+        rawDisplayName = info.name or info.firstName or UnitProfileFormatter.plain(lineList[1].left) or ""
     end
     local name = UnitProfileFormatter.paint(rawDisplayName, UnitProfileFormatter.hex(crVal, collapsedGroups, checkWidget))
     rowWidgets[1] = UnitProfileFormatter.join({
@@ -364,6 +375,7 @@ function UnitProfileFormatter.unitLabel(unit)
     local name = nosecret((UnitName(unit)))
     if not name then return end
     if nosecret(UnitIsPlayer(unit)) then
+        name = nosecret((platformHelper.UnitNameAndRealm(unit))) or name
         local _, classFile = UnitClass(unit)
         return UnitProfileFormatter.paint(name, UnitProfileFormatter.hex(UnitProfileFormatter.classColor(classFile)))
     end

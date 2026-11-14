@@ -79,11 +79,29 @@ end
 
 PlatformBridge.hasSurnames = (_G.NameUtil and type(_G.NameUtil.FormatUnitNameForDisplay) == "function") and true or false
 
+-- WoW Forever names have a surname ("드라이브 쓰랄"). Use the client's display
+-- formatter; when it gives only the first name, join UnitName's two values
+-- (the second one is the surname unless it is our own realm name).
+local ownRealm
 function PlatformBridge.UnitNameAndRealm(unitToken)
-    if PlatformBridge.hasSurnames then
-        return _G.NameUtil.FormatUnitNameForDisplay(unitToken), nil
+    if not PlatformBridge.hasSurnames then
+        return UnitName(unitToken)
     end
-    return UnitName(unitToken)
+    local okFmt, shown = pcall(_G.NameUtil.FormatUnitNameForDisplay, unitToken)
+    if not okFmt then shown = nil end
+    if verifySecret(shown) then return shown, nil end
+    local okName, first, second = pcall(UnitName, unitToken)
+    if not okName or verifySecret(first) or verifySecret(second) or type(first) ~= "string" or first == "" then
+        return shown, nil
+    end
+    if (shown == nil or shown == "" or shown == first) and type(second) == "string" and second ~= "" then
+        if ownRealm == nil then
+            ownRealm = type(_G.GetRealmName) == "function" and PlatformBridge.nosecret(_G.GetRealmName()) or ""
+        end
+        if second ~= ownRealm then return first .. " " .. second, nil end
+    end
+    if shown == nil or shown == "" then shown = first end
+    return shown, nil
 end
 
 local itemAPI  = _G.C_Item
