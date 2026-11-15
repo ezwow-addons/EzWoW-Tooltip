@@ -292,6 +292,298 @@ function GatherSkill.skinningRequirement(unitLevel)
 end
 
 -----------------------------------------------------------------------------
+-- Minimap by place. The game hands addons the minimap tooltip text as secret
+-- values (shown, but not readable), so there the node is found by place: the
+-- cursor's point on the minimap becomes a world point, matched with the known
+-- spawn points of herb and ore nodes (the map addon's data, or the shared data
+-- addon's spawn table).
+-----------------------------------------------------------------------------
+local SPAWN_CELL = 64                -- yards per grid cell
+local FIND_HERBS, FIND_MINERALS = 2383, 2580
+local OUTDOOR_RADIUS = { [0] = 233.33, 200, 166.67, 133.33, 100, 66.67 }   -- yards by zoom
+local INDOOR_RADIUS = { [0] = 150, 120, 90, 60, 40, 25 }
+local spawnGrid                      -- ["cont:cx:cy"] = { x, y, key, x, y, key, ... }
+local spawnGridTriedAt = -1000
+local nodeMeta = {}                  -- key -> { skill line, required skill, label }
+
+local function isKorean()
+    return type(_G.GetLocale) == "function" and _G.GetLocale() == "koKR"
+end
+
+local function herbKey(itemID)
+    local key = "h" .. itemID
+    if not nodeMeta[key] then
+        local herbEntry = HERB_NODES[itemID]
+        local label = isKorean() and herbEntry[3] or nil
+        if not label and _G.C_Item and type(_G.C_Item.GetItemNameByID) == "function" then
+            local isCallOk, itemName = pcall(_G.C_Item.GetItemNameByID, itemID)
+            itemName = isCallOk and nosecret(itemName) or nil
+            if type(itemName) == "string" and itemName ~= "" then label = itemName end
+        end
+        nodeMeta[key] = { HERBALISM, herbEntry[1], label or herbEntry[2] }
+    end
+    return key
+end
+
+local function oreKey(oreEntry)
+    local key = "o" .. oreEntry[2]
+    if not nodeMeta[key] then
+        nodeMeta[key] = { MINING, oreEntry[1], (isKorean() and oreEntry[3]) or oreEntry[2] }
+    end
+    return key
+end
+
+local function addSpawns(spawnList, key)
+    local added = false
+    for _, spawn in ipairs(spawnList) do
+        local cont, x, y = spawn[1], spawn[2], spawn[3]
+        if type(cont) == "number" and type(x) == "number" and type(y) == "number" then
+            local cell = cont .. ":" .. math.floor(x / SPAWN_CELL) .. ":" .. math.floor(y / SPAWN_CELL)
+            local list = spawnGrid[cell]
+            if not list then
+                list = {}
+                spawnGrid[cell] = list
+            end
+            list[#list + 1] = x
+            list[#list + 1] = y
+            list[#list + 1] = key
+            added = true
+        end
+    end
+    return added
+end
+
+-- Built once on first use; tried again at most every 30 seconds while no data
+-- could be read (the shared data module only loads out of combat).
+function GatherSkill.buildSpawnGrid()
+    if spawnGrid then return true end
+    local nowTime = (type(_G.GetTime) == "function" and _G.GetTime()) or 0
+    if nowTime - spawnGridTriedAt < 30 then return false end
+    spawnGridTriedAt = nowTime
+    spawnGrid = {}
+    local herbByEnglish, oreByEnglish = {}, {}
+    for itemID, herbEntry in pairs(HERB_NODES) do herbByEnglish[herbEntry[2]] = itemID end
+    for _, oreEntry in ipairs(ORE_NODES) do oreByEnglish[oreEntry[2]] = oreEntry end
+    local hasData = false
+    -- every node spot (Data/GatherSpots.lua): { [continent] = { [herb item or ore name] = { x, y, ... } } }
+    if type(ns.GatherSpots) == "table" then
+        for continent, kinds in pairs(ns.GatherSpots) do
+            for kindKey, flatSpots in pairs(kinds) do
+                local nodeKey
+                if type(kindKey) == "number" and HERB_NODES[kindKey] then
+                    nodeKey = herbKey(kindKey)
+                elseif oreByEnglish[kindKey] then
+                    nodeKey = oreKey(oreByEnglish[kindKey])
+                end
+                if nodeKey and type(flatSpots) == "table" then
+                    local spawnList = {}
+                    for i = 1, #flatSpots - 1, 2 do
+                        spawnList[#spawnList + 1] = { continent, flatSpots[i], flatSpots[i + 1] }
+                    end
+                    hasData = addSpawns(spawnList, nodeKey) or hasData
+                end
+            end
+        end
+    end
+    -- plus the map addon's spots, which also hold where players gathered
+    local mapData = _G.EzWoWMapFinderData
+    if type(mapData) == "table" then
+        for _, entry in ipairs(mapData) do
+            if type(entry) == "table" and entry.kind == "object" and type(entry.spawns) == "table"
+                and type(entry.names) == "table" then
+                local englishName = entry.names.enUS
+                local herbItem = englishName and herbByEnglish[englishName]
+                local oreEntry = englishName and oreByEnglish[englishName]
+                if herbItem then
+                    hasData = addSpawns(entry.spawns, herbKey(herbItem)) or hasData
+                elseif oreEntry then
+                    hasData = addSpawns(entry.spawns, oreKey(oreEntry)) or hasData
+                end
+            end
+        end
+    end
+    if not hasData then
+        -- herb nodes by the herb they give, from the shared data addon
+        local sharedData = _G.EzWoW_Data
+        local itemSpawns
+        if type(sharedData) == "table" and type(sharedData.GetTable) == "function" then
+            local isCallOk, spawnTable = pcall(sharedData.GetTable, "Spawns", "item")
+            itemSpawns = isCallOk and spawnTable or nil
+        end
+        if type(itemSpawns) == "table" then
+            for itemID in pairs(HERB_NODES) do
+                if type(itemSpawns[itemID]) == "table" then
+                    hasData = addSpawns(itemSpawns[itemID], herbKey(itemID)) or hasData
+                end
+            end
+        end
+    end
+    if not hasData then spawnGrid = nil end
+    return hasData
+end
+
+-- Which node kinds the minimap shows now (Find Herbs / Find Minerals); both when unknown.
+function GatherSkill.trackedKinds()
+    local minimapAPI = _G.C_Minimap
+    if not (minimapAPI and type(minimapAPI.GetNumTrackingTypes) == "function"
+        and type(minimapAPI.GetTrackingInfo) == "function") then
+        return true, true
+    end
+    local okCount, trackCount = pcall(minimapAPI.GetNumTrackingTypes)
+    trackCount = okCount and nosecret(trackCount) or nil
+    if type(trackCount) ~= "number" then return true, true end
+    local herbs, ores, sawEither = false, false, false
+    for trackIndex = 1, trackCount do
+        local isCallOk, a, _, c, _, _, f = pcall(minimapAPI.GetTrackingInfo, trackIndex)
+        if isCallOk then
+            local isActive, spellID
+            if type(a) == "table" then
+                isActive, spellID = nosecret(a.active), nosecret(a.spellID)
+            else
+                isActive, spellID = nosecret(c), nosecret(f)
+            end
+            if spellID == FIND_HERBS then
+                sawEither = true
+                herbs = isActive and true or false
+            elseif spellID == FIND_MINERALS then
+                sawEither = true
+                ores = isActive and true or false
+            end
+        end
+    end
+    if not sawEither then return true, true end
+    return herbs, ores
+end
+
+-- The player's spot as { continent, x, y } in world coordinates, like the data.
+local function playerWorldPosition()
+    local mapAPI = _G.C_Map
+    if not (mapAPI and type(mapAPI.GetBestMapForUnit) == "function" and type(mapAPI.GetPlayerMapPosition) == "function"
+        and type(mapAPI.GetWorldPosFromMapPos) == "function") then
+        return nil
+    end
+    local okMap, uiMapID = pcall(mapAPI.GetBestMapForUnit, "player")
+    uiMapID = okMap and nosecret(uiMapID) or nil
+    if type(uiMapID) ~= "number" then return nil end
+    local okPos, mapPos = pcall(mapAPI.GetPlayerMapPosition, uiMapID, "player")
+    if not okPos or not mapPos then return nil end
+    local okWorld, continent, worldPos = pcall(mapAPI.GetWorldPosFromMapPos, uiMapID, mapPos)
+    continent = okWorld and nosecret(continent) or nil
+    if type(continent) ~= "number" or type(worldPos) ~= "table" then return nil end
+    local worldX, worldY = nosecret(worldPos.x), nosecret(worldPos.y)
+    if type(worldX) ~= "number" or type(worldY) ~= "number" then return nil end
+    return continent, worldX, worldY
+end
+
+local function minimapRadiusYards()
+    local minimapAPI = _G.C_Minimap
+    if minimapAPI and type(minimapAPI.GetViewRadius) == "function" then
+        local isCallOk, viewRadius = pcall(minimapAPI.GetViewRadius)
+        viewRadius = isCallOk and nosecret(viewRadius) or nil
+        if type(viewRadius) == "number" and viewRadius > 0 then return viewRadius end
+    end
+    local minimap = _G.Minimap
+    if not (minimap and minimap.GetZoom) then return nil end
+    local zoom = nosecret(minimap:GetZoom())
+    if type(zoom) ~= "number" then return nil end
+    local indoors = type(_G.IsIndoors) == "function" and _G.IsIndoors() == true
+    return (indoors and INDOOR_RADIUS or OUTDOOR_RADIUS)[zoom]
+end
+
+-- World point under the cursor on the minimap: continent, x, y, minimap units per yard.
+function GatherSkill.cursorWorldPosition()
+    local minimap = _G.Minimap
+    if not (minimap and minimap.GetCenter and type(_G.GetCursorPosition) == "function") then return nil end
+    local continent, playerX, playerY = playerWorldPosition()
+    local radius = minimapRadiusYards()
+    if not (continent and radius) then return nil end
+    local halfWidth = nosecret(minimap:GetWidth()) or 0
+    local centerX, centerY = minimap:GetCenter()
+    centerX, centerY = nosecret(centerX), nosecret(centerY)
+    local scale = nosecret(minimap:GetEffectiveScale())
+    if halfWidth <= 0 or type(centerX) ~= "number" or type(centerY) ~= "number" or type(scale) ~= "number" or scale <= 0 then
+        return nil
+    end
+    halfWidth = halfWidth / 2
+    local cursorX, cursorY = _G.GetCursorPosition()
+    local perYard = halfWidth / radius
+    local right, up = (cursorX / scale - centerX) / perYard, (cursorY / scale - centerY) / perYard
+    local east, north = right, up
+    local getCVar = (_G.C_CVar and _G.C_CVar.GetCVar) or _G.GetCVar
+    local okCVar, rotateValue = false, nil
+    if type(getCVar) == "function" then okCVar, rotateValue = pcall(getCVar, "rotateMinimap") end
+    if okCVar and rotateValue == "1" then
+        local facing = type(_G.GetPlayerFacing) == "function" and nosecret(_G.GetPlayerFacing()) or nil
+        if type(facing) ~= "number" then return nil end
+        local cosF, sinF = math.cos(facing), math.sin(facing)
+        east = right * cosF - up * sinF
+        north = right * sinF + up * cosF
+    end
+    -- world X runs north, world Y runs west
+    return continent, playerX + north, playerY - east, perYard, math.sqrt(east * east + north * north)
+end
+
+-- How far (yards) a spawn may be from the cursor point: a node icon's size (the
+-- tooltip shows while the cursor is anywhere on the icon), plus a little more
+-- the farther it is from the player (the minimap scale is not exact).
+local function cursorReach(perYard, offsetYards)
+    return math.max(6, math.min(60, 12 / perYard + (offsetYards or 0) * 0.13))
+end
+
+-- Node kinds with a spawn point under the cursor, nearest first (at most 3).
+function GatherSkill.nodesUnderCursor()
+    local wantHerbs, wantOres = GatherSkill.trackedKinds()
+    if not (wantHerbs or wantOres) then return {} end
+    if not GatherSkill.buildSpawnGrid() then return {} end
+    local continent, worldX, worldY, perYard, offsetYards = GatherSkill.cursorWorldPosition()
+    if not continent then return {} end
+    local reach = cursorReach(perYard, offsetYards)
+    local bestDistance = {}
+    local cellX0, cellX1 = math.floor((worldX - reach) / SPAWN_CELL), math.floor((worldX + reach) / SPAWN_CELL)
+    local cellY0, cellY1 = math.floor((worldY - reach) / SPAWN_CELL), math.floor((worldY + reach) / SPAWN_CELL)
+    for cellX = cellX0, cellX1 do
+        for cellY = cellY0, cellY1 do
+            local list = spawnGrid[continent .. ":" .. cellX .. ":" .. cellY]
+            if list then
+                for i = 1, #list, 3 do
+                    local dx, dy = list[i] - worldX, list[i + 1] - worldY
+                    local distance = dx * dx + dy * dy
+                    local key = list[i + 2]
+                    local meta = nodeMeta[key]
+                    local wanted = meta and ((meta[1] == HERBALISM and wantHerbs) or (meta[1] == MINING and wantOres))
+                    if wanted and distance <= reach * reach and (not bestDistance[key] or distance < bestDistance[key]) then
+                        bestDistance[key] = distance
+                    end
+                end
+            end
+        end
+    end
+    local found = {}
+    for key, distance in pairs(bestDistance) do found[#found + 1] = { key = key, distance = distance } end
+    table.sort(found, function(a, b) return a.distance < b.distance end)
+    -- the nearest kind, plus others about as near (two nodes under one icon)
+    local result = {}
+    local nearest = found[1] and math.sqrt(found[1].distance)
+    for i = 1, math.min(3, #found) do
+        if math.sqrt(found[i].distance) <= nearest + 10 then result[#result + 1] = nodeMeta[found[i].key] end
+    end
+    return result
+end
+
+local function hasSecretText(tipFrame, tooltipData)
+    local isSecret = _G.issecretvalue
+    if type(isSecret) ~= "function" then return false end
+    local dataLines = type(tooltipData) == "table" and tooltipData.lines
+    if type(dataLines) == "table" and not isSecret(dataLines) then
+        for _, lineData in ipairs(dataLines) do
+            if type(lineData) == "table" and isSecret(lineData.leftText) then return true end
+        end
+    end
+    local leftRegion = type(tipFrame.NumLines) == "function" and tipFrame:NumLines() > 0 and addon.LineRegions(tipFrame, 1)
+    return leftRegion and isSecret(leftRegion:GetText()) or false
+end
+
+-----------------------------------------------------------------------------
 -- Tooltip hooks
 -----------------------------------------------------------------------------
 function GatherSkill.isEnabled()
@@ -348,7 +640,18 @@ function GatherSkill.onMinimapTooltip(tipFrame, tooltipData)
             end
         end
     end
-    if #foundNodes == 0 then return end
+    if #foundNodes == 0 then
+        -- the text is secret: the nodes are found by place, named on each line
+        if not hasSecretText(tipFrame, tooltipData) then return end
+        local isCallOk, nearNodes = pcall(GatherSkill.nodesUnderCursor)
+        if not isCallOk or type(nearNodes) ~= "table" or #nearNodes == 0 then return end
+        for _, meta in ipairs(nearNodes) do
+            tipFrame:AddLine(GatherSkill.composeLine(meta[1], meta[2], meta[3]))
+        end
+        addon.AttributeTooltip(tipFrame)
+        tipFrame:Show()
+        return
+    end
     local labelEach = #foundNodes > 1
     for _, foundEntry in ipairs(foundNodes) do
         tipFrame:AddLine(GatherSkill.composeLine(foundEntry[2][1], foundEntry[2][2], labelEach and foundEntry[1] or nil))

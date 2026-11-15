@@ -477,7 +477,7 @@ function TooltipEngine:ReadableUnit(unitToken, tooltipData)
 end
 
 function TooltipEngine:IsUnitRestricted(unitToken)
-    if not unitToken or PlatformBridge.issecret(unitToken) then return true end
+    if PlatformBridge.issecret(unitToken) or type(unitToken) ~= "string" or unitToken == "" then return true end
     if PlatformBridge.anysecret(UnitName(unitToken)) or PlatformBridge.anysecret(UnitClass(unitToken)) or PlatformBridge.anysecret(UnitRace(unitToken)) then
         return true
     end
