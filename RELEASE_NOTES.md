@@ -1,13 +1,11 @@
-# v2.0.27
+# v2.0.28
 
 ### 한국어
-- 데이터 공유 방식을 새로 바꿨습니다. 같은 기록을 되풀이해 보내지 않고 상대에게 없는 기록만 주고받아, 공유로 오가는 메시지가 크게 줄었습니다. 예전 버전을 쓰는 사람과도 계속 공유됩니다.
-- 공유 기록의 확인 대기 공간에 남아 있던 이미 확인된 기록을 정리해 저장 데이터가 줄었습니다.
-- /ezshare 창의 사람 탭에서 상대가 쓰는 공유 버전과 EzWoW 애드온 버전을 볼 수 있습니다.
-- 오브젝트 이름을 더 추가했습니다.
+- 미니맵의 약초·광맥 표시에 마우스를 올리면 필요한 채집 숙련도가 다시 나옵니다(게임이 미니맵 툴팁 글자를 숨겨서, 이제 위치로 찾습니다).
+- 일부 유닛 툴팁에서 나던 오류를 막았습니다.
+- 획득처에 나오는 오브젝트 이름을 최신 게임 데이터로 채웠습니다.
 
 ### English
-- Data sharing works in a new way: records are no longer sent again and again, only what the other player does not have yet, so far fewer sharing messages go around. Sharing with players on older versions continues.
-- Records already confirmed are cleared from the shared-data waiting list, so the saved data is smaller.
-- The Players tab of the /ezshare window shows each player's sharing version and EzWoW addon versions.
-- Added more object names.
+- Hovering herb and ore marks on the minimap shows the required gathering skill again (the game now hides the minimap tooltip text from addons, so the node is found by its place).
+- Prevented an error on some unit tooltips.
+- Filled in object names in item sources from the latest game data.
