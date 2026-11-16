@@ -39,7 +39,7 @@ WoW Forever (`Interface: 16001`) · `/ezt`
 | ② | 플레이어 | 칭호 · **이름 성** · 길드(계급) · 레벨 · 종족 · 직업 · 지역, **평균 아이템 레벨**, **특성 배분**, 탈것, 이동 속도(%), **대상의 대상**, **이 대상을 선택한 파티원**, PvP 계급. 아이템 레벨과 특성은 조사 후 캐시해 둡니다. |
 | ③ | NPC | 레벨 · 정예 · 종류, **지금 시전 중인 주문**, **내 위협 수준(%) · 탱킹 여부**, 대상, 생존 시간 · 위상, 드랍 수집 추적, NPC ID. |
 | ④ | 채집 숙련도 | 약초 · 광맥(미니맵 표시 포함) · 가죽을 벗길 수 있는 시체 툴팁에 **필요한 숙련도와 내 숙련도**를 난이도 색(빨강 · 주황 · 노랑 · 초록 · 회색)으로 표시합니다. 배우지 않은 기술은 “미습득”. |
-| ⑤ | 아이템 · 착용 장비 비교 | **한 · 영 이름 병기**, 획득처(던전 · 보스 · 퀘스트 · 상인 · 제작 · 월드 드랍 등, 내장 `Data/SourceDB.lua`), 수집 상태(형상 · 탈것 · 도안 · 퀘스트), **가방/은행 보유 수량**, 최대 겹침(Shift), 상점 판매가, **경매장 저장 시세**(개당/묶음, 수집한 지 얼마나 됐는지), 아이템 ID. **Shift 없이 착용 장비 비교** 옵션을 켜면 착용 중인 장비 툴팁이 나란히 뜹니다(기본 꺼짐). 획득처 · 수집 · 보유 줄은 이름 아래 한 묶음으로 나오고, 획득처가 여러 곳이면 “외 N곳”으로 줄였다가 **Shift**를 누르면 펼칩니다. EzWoW 사용자가 게임에서 확인한 상점은 “판매:” 줄로 나오고(다른 진영 상점은 빠짐), 도안에는 도안 자체의 획득처가 붙습니다. |
+| ⑤ | 아이템 · 착용 장비 비교 | **한 · 영 이름 병기**, 획득처(던전 · 보스 · 퀘스트 · 상인 · 제작 · 월드 드랍 등, 내장 `Data/SourceDB.lua`), 수집 상태(형상 · 탈것 · 도안 · 퀘스트), **가방/은행 보유 수량**, 최대 겹침(Shift), 상점 판매가와 **상인이 파는 아이템의 상점 구입가**(둘 다 개당/묶음), **경매장 저장 시세**(개당/묶음, 수집한 지 얼마나 됐는지), 아이템 ID. **Shift 없이 착용 장비 비교** 옵션을 켜면 착용 중인 장비 툴팁이 나란히 뜹니다(기본 꺼짐). 획득처 · 수집 · 보유 줄은 이름 아래 한 묶음으로 나오고, 획득처가 여러 곳이면 “외 N곳”으로 줄였다가 **Shift**를 누르면 펼칩니다. EzWoW 사용자가 게임에서 확인한 상점은 “판매:” 줄로 나오고(다른 진영 상점은 빠짐), 도안에는 도안 자체의 획득처가 붙습니다. |
 | ⑥ | 재료 | 그 재료를 쓰는 제조법 수(**재료 사용처**)와 보유 수량. |
 | ⑦ | 주문 · 오라 | 버프 · 디버프를 **건 사람(직업 색)**, 주문 ID, 아이콘. 툴팁 안의 지나치게 긴 소수점 숫자도 보기 좋게 정리합니다. |
 
@@ -81,7 +81,7 @@ WoW Forever (`Interface: 16001`) · `/ezt`
 | ④ | 죽은 대상 회색 표시 · 체력 수치 표시 | 끔 · 켬 |
 | ④ | 이슈 리포터 창 · F6 제보 문구 숨김 (EzWoW - Error Catcher가 있으면 그쪽에서 설정) | 켬 |
 | ④ | 체력바 높이 0~16px · 채집 필요 숙련도 표시 | 8px · 켬 |
-| ⑤ | 아이템 · 퀘스트 획득처 · 수집 상태 · 보유 수량(가방/은행) · 최대 겹침 · 판매가 | 켬 |
+| ⑤ | 아이템 · 퀘스트 획득처 · 수집 상태 · 보유 수량(가방/은행) · 최대 겹침 · 상점 가격(판매 · 구입) | 켬 |
 | ⑤ | 아이템 품질색 테두리 · 퀘스트 난이도색 테두리 · 아이템 · 주문 아이콘 · 버프 · 디버프 시전자 | 켬 |
 | ⑤ | ID 항상 표시 (끄면 Shift/Alt를 누를 때만) | 켬 |
 | ⑤ | 경매장 저장 시세 표시 · [경매장 시세 갱신] 버튼 · 한글 · 영문 이름 병기 | 켬 |
@@ -152,7 +152,7 @@ EzWoW - Tooltip turns game tooltips into **clean dark cards** and adds useful in
 | ② | Players | Title, **first name and surname**, guild (rank), level, race, class, zone, **average item level**, **talent split**, mount, movement speed (%), **target of target**, **party members targeting the unit**, PvP rank. Item level and talents are inspected and cached. |
 | ③ | NPCs | Level, elite, type, **current cast**, **your threat (%) and tanking**, target, alive time and layer, drop/quest tracking, NPC ID. |
 | ④ | Gathering skill | Herbs, ore veins (also their minimap marks) and skinnable corpses show the **required and your current skill** in difficulty colours (red, orange, yellow, green, grey), or “not learned”. |
-| ⑤ | Items · compare with equipped | **Korean/English dual name**, sources (dungeon, boss, quest, vendor, craft, world drop… from the bundled `Data/SourceDB.lua`), collection status (appearance, mount, recipe, quest), **bag/bank count**, max stack (Shift), vendor price, **saved AH price** (each/stack, with its age), item ID. With **Compare with equipped gear without Shift** on, the equipped item's tooltip opens next to it (off by default). Source, collection and count lines come as one block under the name; many sources are cut to “+N more” and open with **Shift**. Shops EzWoW users saw in the game show as a “Sold by:” line (shops of the other faction are left out), and recipes show where the recipe itself comes from. |
+| ⑤ | Items · compare with equipped | **Korean/English dual name**, sources (dungeon, boss, quest, vendor, craft, world drop… from the bundled `Data/SourceDB.lua`), collection status (appearance, mount, recipe, quest), **bag/bank count**, max stack (Shift), vendor sell price and **vendor buy price of items NPCs sell** (both each/stack), **saved AH price** (each/stack, with its age), item ID. With **Compare with equipped gear without Shift** on, the equipped item's tooltip opens next to it (off by default). Source, collection and count lines come as one block under the name; many sources are cut to “+N more” and open with **Shift**. Shops EzWoW users saw in the game show as a “Sold by:” line (shops of the other faction are left out), and recipes show where the recipe itself comes from. |
 | ⑥ | Reagents | How many recipes use the item (**Used In**) and how many you own. |
 | ⑦ | Spells · auras | **Who cast** a buff/debuff (class-coloured), spell ID, icon. Overly long decimals inside tooltips are tidied up. |
 
@@ -194,7 +194,7 @@ So that nothing shows twice, these addons take over the matching feature when th
 | ④ | Gray out dead units · Show health numbers | Off · On |
 | ④ | Hide Issue Reporter & F6 bug hint (set in EzWoW - Error Catcher when it is installed) | On |
 | ④ | HP bar height 0–16 px · Show gathering skill needed | 8 px · On |
-| ⑤ | Item & quest source · Collection status · Owned count (Bag/Bank) · Max stack & vendor price | On |
+| ⑤ | Item & quest source · Collection status · Owned count (Bag/Bank) · Max stack & vendor prices (sell · buy) | On |
 | ⑤ | Item quality border · Quest difficulty border · Item & spell icons · Buff & debuff caster | On |
 | ⑤ | Always show IDs (off: only with Shift/Alt) | On |
 | ⑤ | Saved AH price · [Update AH Prices] button · Korean/English dual names | On |
@@ -238,8 +238,8 @@ So that nothing shows twice, these addons take over the matching feature when th
 
 ## Data credits / 데이터 출처
 
-- Most item drop and vendor sources, and the herb and ore node spots, come from **Classic-DB** of the CMaNGOS project ([cmangos/classic-db](https://github.com/cmangos/classic-db), GNU GPL v3). See `LICENSE-DATA.md` and `LICENSE-DATA-NOTICE.md`.
-- 아이템 드롭처·판매처 상당수와 약초·광맥 위치는 CMaNGOS 프로젝트의 **Classic-DB**([cmangos/classic-db](https://github.com/cmangos/classic-db), GNU GPL v3)에서 가져왔습니다. `LICENSE-DATA.md`, `LICENSE-DATA-NOTICE.md`를 참고하세요.
+- Most item drop and vendor sources, the herb and ore node spots and the list of items vendors sell (for the buy price line) come from **Classic-DB** of the CMaNGOS project ([cmangos/classic-db](https://github.com/cmangos/classic-db), GNU GPL v3). See `LICENSE-DATA.md` and `LICENSE-DATA-NOTICE.md`.
+- 아이템 드롭처·판매처 상당수, 약초·광맥 위치, 상점 구입가 줄의 상인이 파는 아이템 목록은 CMaNGOS 프로젝트의 **Classic-DB**([cmangos/classic-db](https://github.com/cmangos/classic-db), GNU GPL v3)에서 가져왔습니다. `LICENSE-DATA.md`, `LICENSE-DATA-NOTICE.md`를 참고하세요.
 
 ---
 

@@ -59,6 +59,7 @@ local ITEM_TAGS = {
     SEEN_SRC   = lineTag("000119"),
     GEAR_INFO  = lineTag("00011a"),
     REC_MORE   = lineTag("00011b", true),
+    BUY_PRICE  = lineTag("00011c"),
 }
 
 -- EzWoW-BestGearFinder's item lines (best-in-slot marks, gear sources) are
@@ -172,6 +173,19 @@ function addon.FormatCopperAsCoinIcons(copper)
         parts[#parts + 1] = format("|cffEDA55F%d|r %s", themeColor, COIN_COPPER_ICON)
     end
     return table.concat(parts, " ")
+end
+
+-- "price of one (×stack: price of the stack)", like the auction price line
+function ItemQuestEnricher.composeEachAndStack(unitPrice, stackQty)
+    local unitMoney = addon.FormatCopperAsCoinIcons(unitPrice)
+    if not unitMoney or unitMoney == "" then return nil end
+    if stackQty and stackQty > 1 then
+        local stackMoney = addon.FormatCopperAsCoinIcons(math.floor(unitPrice * stackQty + 0.5))
+        if stackMoney and stackMoney ~= "" then
+            return format("%s |cff8398A6(×%d: %s)|r", unitMoney, stackQty, stackMoney)
+        end
+    end
+    return unitMoney
 end
 
 function ItemQuestEnricher.resolveHoveredSlotStackCount(fallbackBagCount)
@@ -438,13 +452,39 @@ EventDispatcher:attachTrigger("tooltip:item", function(self, tip, link)
             if not iCfg or iCfg.showItemDetails ~= false then
                 local stack = tonumber(nosecret(itemStackCount)) or 0
                 local price = tonumber(nosecret(itemSellPrice)) or 0
-                if price > 0 and not containsSellPrice and not addon:FindLine(tip, "^" .. ITEM_TAGS.SELL_PRICE) then
-                    local moneyStr = addon.FormatCopperAsCoinIcons and addon.FormatCopperAsCoinIcons(price)
-                    if moneyStr and moneyStr ~= "" then
+                -- the game's own sell price line shows only the stack's total: for a
+                -- stack (or when that line is missing) the price of one and of the stack
+                local sellQty = ItemQuestEnricher.resolveHoveredSlotStackCount(ownedBagCount)
+                if price > 0 and (sellQty > 1 or not containsSellPrice) and not addon:FindLine(tip, "^" .. ITEM_TAGS.SELL_PRICE) then
+                    local moneyStr = ItemQuestEnricher.composeEachAndStack(price, sellQty)
+                    if moneyStr then
                         tip:AddLine(format("%s|cffA7B9C5%s:|r %s", ITEM_TAGS.SELL_PRICE, resolveExtraLocaleText("sellPrice"), moneyStr))
                     end
                 end
             end
+        end
+    end
+
+    -- what a vendor asks for it (items NPCs sell; the game gives addons no buy price)
+    local buyEntry = itemID and addon.BuyPriceDB and addon.BuyPriceDB[itemID]
+    if buyEntry and (not iCfg or iCfg.showItemDetails ~= false) and not addon:FindLine(tip, "^" .. ITEM_TAGS.BUY_PRICE) then
+        local buyPrice, buyCount = buyEntry, 1
+        if type(buyEntry) == "table" then buyPrice, buyCount = buyEntry[1], buyEntry[2] or 1 end
+        -- the stack under the mouse (a shop's or a bag's), not every one owned
+        local buyQty = ItemQuestEnricher.resolveHoveredSlotStackCount(nil)
+        local unitBuy = buyPrice / buyCount
+        local buyStr
+        if unitBuy >= 1 and unitBuy == math.floor(unitBuy) then
+            buyStr = ItemQuestEnricher.composeEachAndStack(unitBuy, buyQty)
+        else
+            -- less than a copper each (arrows, bullets): the price of one purchase
+            local bundleMoney = addon.FormatCopperAsCoinIcons(buyPrice)
+            if bundleMoney and bundleMoney ~= "" then
+                buyStr = bundleMoney .. " |cff8398A6" .. format(resolveExtraLocaleText("buyCountFmt"), buyCount) .. "|r"
+            end
+        end
+        if buyStr then
+            tip:AddLine(format("%s|cffA7B9C5%s:|r %s", ITEM_TAGS.BUY_PRICE, resolveExtraLocaleText("buyPrice"), buyStr))
         end
     end
 

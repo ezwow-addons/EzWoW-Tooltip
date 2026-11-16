@@ -1260,6 +1260,20 @@ function DropSourceInspector.sharedQuestRewards(itemID)
     return cache.items[itemID]
 end
 
+-- true when the shared records draw a "sold by" line for the item in this
+-- tooltip (Modules/ItemAndQuestExtras.lua): a shop with a known name sells it
+-- and the shared lines are not turned off
+function DropSourceInspector.sharedVendorLineShown(itemID)
+    local share = _G.EzWoW_Share
+    if type(share) ~= "table" or type(share.VendorText) ~= "function" then return false end
+    if type(share.ShowsTooltips) == "function" then
+        local okShows, shows = pcall(share.ShowsTooltips)
+        if okShows and not shows then return false end
+    end
+    local okText, text = pcall(share.VendorText, itemID)
+    return okText and type(text) == "string" and text ~= ""
+end
+
 function DropSourceInspector.composeItemSources(itemID, itemLink)
     local outputList = {}
     local primaryLocKey = nil
@@ -1318,10 +1332,10 @@ function DropSourceInspector.composeItemSources(itemID, itemLink)
             end
         else
             -- shops seen in the game sell it: their line (EzWoW shared records)
-            -- stands for the vendors, the older vendor records are left out
-            local share = _G.EzWoW_Share
-            local seenVendors = share and type(share.GetVendors) == "function" and share.GetVendors(itemID)
-            local skipVendors = type(seenVendors) == "table" and #seenVendors > 0
+            -- stands for the vendors, the older vendor records are left out.
+            -- Only when that line is really shown: shops with no known name give
+            -- none, and the shared lines can be turned off
+            local skipVendors = DropSourceInspector.sharedVendorLineShown(itemID)
             for recordItem in raw:gmatch("([^;]+)") do
                 if skipVendors and (recordItem:find("^V:") or recordItem:find("^VN:")) then
                     -- left out
@@ -1611,7 +1625,10 @@ function DropSourceInspector.useSharedModule(moduleName, m)
     if type(m) ~= "table" or (moduleName ~= "Core" and m.formatVersion ~= SHARED_FORMAT) then return end
     for sharedName, ownName in pairs(SHARED_TABLES[moduleName]) do
         local t = m[sharedName]
-        if type(t) == "table" then
+        -- the bundled table comes with every release (never older): the shared one
+        -- only stands in for a missing or empty one
+        local own = addon[ownName]
+        if type(t) == "table" and (type(own) ~= "table" or next(own) == nil) then
             addon[ownName] = t
             if ownName == "DualNameTitleDB" then dualTitleReverse = nil end
         end

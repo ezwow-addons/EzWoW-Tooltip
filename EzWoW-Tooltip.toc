@@ -23,7 +23,7 @@
 ## Author: qqhrqqhr2
 ## Version: 2.0.28
 ## Category: EzWoW
-## X-Credits: item source data and gathering node spots mostly from CMaNGOS Classic-DB (GPL v3)
+## X-Credits: item source data, gathering node spots and vendor item lists mostly from CMaNGOS Classic-DB (GPL v3)
 ## X-License: GPL-3.0
 ## X-Website: https://github.com/qqhrqqhr2/EzWoW-Tooltip
 ## IconTexture: Interface\AddOns\EzWoW-Tooltip\Media\Icon
@@ -47,6 +47,7 @@ Modules\ModelPreview.lua
 Modules\LinksAndIDs.lua
 Modules\TalentInspector.lua
 Data\SourceDB.lua
+Data\BuyPrices.lua
 Data\GatherSpots.lua
 Modules\SourceAndCollection.lua
 Modules\UnitTacticalExtras.lua
