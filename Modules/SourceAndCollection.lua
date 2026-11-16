@@ -1589,8 +1589,9 @@ end
 -- The lookup tables above come from Data\SourceDB.lua. When EzWoW-Data is installed and
 -- its table format is the one this file understands, each table is pointed at the shared
 -- copy once its module has loaded. This addon's own modules (item sources, NPC info,
--- crafting, spell names and titles) are loaded right after login (never during combat; a
--- load asked for in combat runs when combat ends). The name modules are large, so they are
+-- crafting, spell names and titles) are loaded right after login only when a bundled table
+-- they stand in for is missing or empty (never during combat; a load asked for in combat
+-- runs when combat ends). The name modules are large, so they are
 -- not loaded for this addon: their tables are used once another addon has loaded them.
 -- Until a module is loaded, and without EzWoW-Data, the bundled tables are used as before.
 -- Tooltip hooks only read addon.<table>; they never load anything.
@@ -1644,15 +1645,27 @@ function DropSourceInspector.watchSharedModules()
     end
 end
 
+-- a module is loaded only when a bundled table it stands in for is missing or
+-- empty (with all of them there it would only take memory)
+function DropSourceInspector.needsSharedModule(moduleName)
+    for _, ownName in pairs(SHARED_TABLES[moduleName] or {}) do
+        local own = addon[ownName]
+        if type(own) ~= "table" or next(own) == nil then return true end
+    end
+    return false
+end
+
 function DropSourceInspector.loadSharedData()
     local D = DropSourceInspector.sharedDataAPI()
     if not D then return end
     for _, moduleName in ipairs(SHARED_LOAD) do
-        pcall(D.Load, moduleName, function(_, ok)
-            if not ok then return end
-            local isOk, m = pcall(D.Peek, moduleName)
-            if isOk then DropSourceInspector.useSharedModule(moduleName, m) end
-        end)
+        if DropSourceInspector.needsSharedModule(moduleName) then
+            pcall(D.Load, moduleName, function(_, ok)
+                if not ok then return end
+                local isOk, m = pcall(D.Peek, moduleName)
+                if isOk then DropSourceInspector.useSharedModule(moduleName, m) end
+            end)
+        end
     end
 end
 

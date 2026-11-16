@@ -200,6 +200,29 @@ function ItemQuestEnricher.resolveHoveredSlotStackCount(fallbackBagCount)
             fcVal = isCallOk and tonumber(nosecret(fcVal))
             if fcVal and fcVal > 1 then return fcVal end
         end
+        -- EzWoW Bags buttons: the record shown (entry.count; on the bag slot button
+        -- laid over it, ezEntry), or the number written on the button (its count label)
+        local entry = type(focus) == "table" and (rawget(focus, "ezEntry") or rawget(focus, "entry"))
+        local entryCount = type(entry) == "table" and tonumber(nosecret(rawget(entry, "count")))
+        if entryCount and entryCount > 1 then return entryCount end
+        -- a bag slot button of any bag window: the stack in that bag slot
+        if type(focus.GetBagID) == "function" and type(focus.GetID) == "function"
+            and C_Container and C_Container.GetContainerItemInfo then
+            local okB, bag = pcall(focus.GetBagID, focus)
+            local okS, slot = pcall(focus.GetID, focus)
+            bag, slot = okB and tonumber(nosecret(bag)), okS and tonumber(nosecret(slot))
+            if bag and slot and slot > 0 then
+                local okI, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
+                local n = okI and type(info) == "table" and tonumber(nosecret(info.stackCount))
+                if n and n > 1 then return n end
+            end
+        end
+        if type(themeColor) == "table" and type(themeColor.GetText) == "function" then
+            local isCallOk, labelText = pcall(themeColor.GetText, themeColor)
+            local labelCount = isCallOk and type(labelText) == "string" and not issecret(labelText)
+                and tonumber(labelText:match("^%s*(%d+)%s*$"))
+            if labelCount and labelCount > 1 then return labelCount end
+        end
     end
     if fallbackBagCount and fallbackBagCount > 1 then
         return fallbackBagCount
@@ -445,7 +468,8 @@ EventDispatcher:attachTrigger("tooltip:item", function(self, tip, link)
 
     local itemBindType, itemClassID
     if compat.GetItemInfo then
-        local isCallOk, _, _, _, _, _, _, itemStackCount, _, _, _, itemSellPrice, classID, _, bindType = pcall(compat.GetItemInfo, itemID or link)
+        -- name, link, quality, level, min level, type, subtype, stack size, slot, icon, sell price, class, subclass, bind
+        local isCallOk, _, _, _, _, _, _, _, itemStackCount, _, _, itemSellPrice, classID, _, bindType = pcall(compat.GetItemInfo, itemID or link)
         if isCallOk then
             itemBindType = tonumber(nosecret(bindType))
             itemClassID = tonumber(nosecret(classID))
@@ -453,8 +477,10 @@ EventDispatcher:attachTrigger("tooltip:item", function(self, tip, link)
                 local stack = tonumber(nosecret(itemStackCount)) or 0
                 local price = tonumber(nosecret(itemSellPrice)) or 0
                 -- the game's own sell price line shows only the stack's total: for a
-                -- stack (or when that line is missing) the price of one and of the stack
-                local sellQty = ItemQuestEnricher.resolveHoveredSlotStackCount(ownedBagCount)
+                -- stack (or when that line is missing) the price of one and of the stack.
+                -- The stack under the mouse, not every one owned (a link, a loot slot or
+                -- two rings in the bags are one each)
+                local sellQty = stack > 1 and ItemQuestEnricher.resolveHoveredSlotStackCount(nil) or 1
                 if price > 0 and (sellQty > 1 or not containsSellPrice) and not addon:FindLine(tip, "^" .. ITEM_TAGS.SELL_PRICE) then
                     local moneyStr = ItemQuestEnricher.composeEachAndStack(price, sellQty)
                     if moneyStr then
