@@ -1,11 +1,15 @@
-# v2.0.28
+# v2.0.29
 
 ### 한국어
-- 미니맵의 약초·광맥 표시에 마우스를 올리면 필요한 채집 숙련도가 다시 나옵니다(게임이 미니맵 툴팁 글자를 숨겨서, 이제 위치로 찾습니다).
-- 일부 유닛 툴팁에서 나던 오류를 막았습니다.
-- 획득처에 나오는 오브젝트 이름을 최신 게임 데이터로 채웠습니다.
+- 상인이 파는 아이템에 "상점 구입가" 줄을 추가했습니다.
+- 상점 판매가와 구입가를 경매장 시세처럼 개당 가격과 묶음 가격(×개수: 합계)으로 보여 줍니다.
+- EzWoW-Data가 깔려 있으면 예전 데이터가 쓰이던 문제를 고쳤습니다. 애드온에 든 최신 데이터를 먼저 씁니다.
+- 드롭·판매 줄 끝에 다른 사용자에게 받은 곳의 수를 "(공유 N)"으로 표시합니다.
+- 이름을 모르는 상점만 있을 때 판매처 줄이 통째로 사라지던 문제를 고쳤습니다.
 
 ### English
-- Hovering herb and ore marks on the minimap shows the required gathering skill again (the game now hides the minimap tooltip text from addons, so the node is found by its place).
-- Prevented an error on some unit tooltips.
-- Filled in object names in item sources from the latest game data.
+- Added a "Vendor Buy Price" line to items NPCs sell.
+- Vendor sell and buy prices now show the price of one and of the stack (×count: total), like the auction price.
+- Fixed older data being used when EzWoW-Data is installed; the addon's own, newer data now comes first.
+- Drop and sold-by lines end with "(N shared)": how many of them came from other players.
+- Fixed the vendor line disappearing when only shops with unknown names were known.
