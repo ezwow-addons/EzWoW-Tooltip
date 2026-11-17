@@ -809,7 +809,7 @@ end
 AuctionPriceScanner.MERCHANT_OWNER = "EzWoW-Bags"
 
 function AuctionPriceScanner.handleMerchantShow()
-    if addon.IsOtherAddOnLoaded(AuctionPriceScanner.MERCHANT_OWNER) then return end
+    if addon.OwnsOption(AuctionPriceScanner.MERCHANT_OWNER) then return end
     if IsShiftKeyDown and IsShiftKeyDown() then return end
     local iCfg = addon.db and addon.db.item
 

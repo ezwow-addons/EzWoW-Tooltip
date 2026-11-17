@@ -157,6 +157,21 @@ function TooltipEngine.IsOtherAddOnLoaded(name)
     return ok and (loadedOrLoading or loaded) and true or false
 end
 
+-- The other addon runs the feature only when it has it: an older version of
+-- it without the option leaves the feature to this addon (mixed versions).
+function TooltipEngine.OwnsOption(name)
+    if not TooltipEngine.IsOtherAddOnLoaded(name) then return false end
+    if name == "EzWoW-Bags" then
+        -- (its settings get every default at load: an older Bags has no auto-sell)
+        local bags = _G.EzWoW_Bags
+        return type(bags) == "table" and type(bags.cfg) == "table" and bags.cfg.autoSellJunk ~= nil
+    elseif name == "EzWoW-ErrorCatcher" then
+        local catcher = _G.EzWoW_ErrorCatcher
+        return type(catcher) == "table" and type(catcher.ShouldHideIssueReport) == "function"
+    end
+    return true
+end
+
 -- Tooltip post-calls fire for every tooltip, including hidden scanning
 -- tooltips that other addons read lines from. Only decorate the tracked UI
 -- tooltips, or other tooltips while they are actually anchored on screen.

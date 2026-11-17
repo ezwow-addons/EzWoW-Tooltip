@@ -803,7 +803,7 @@ local OWNER_TITLES = {
     ["EzWoW-ErrorCatcher"] = "EzWoW - Error Catcher",
 }
 function SettingsDialog.resolveOwnerNote(ownerAddon)
-    if not ownerAddon or not addon.IsOtherAddOnLoaded(ownerAddon) then return nil end
+    if not ownerAddon or not addon.OwnsOption(ownerAddon) then return nil end
     return string.format(SettingsDialog.resolveOptionsLocaleText("managedBy"), OWNER_TITLES[ownerAddon] or ownerAddon)
 end
 

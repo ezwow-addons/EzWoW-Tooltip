@@ -723,7 +723,7 @@ AuraCasterTracker.ISSUE_REPORT_OWNER = "EzWoW-ErrorCatcher"
 
 function AuraCasterTracker.issueReportOwnedElsewhere()
     if IsLoggedIn and not IsLoggedIn() then return true end
-    return addon.IsOtherAddOnLoaded(AuraCasterTracker.ISSUE_REPORT_OWNER)
+    return addon.OwnsOption(AuraCasterTracker.ISSUE_REPORT_OWNER)
 end
 
 function AuraCasterTracker.shouldHideIssueReport()
