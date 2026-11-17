@@ -1133,6 +1133,8 @@ function SettingsDialog.launchConfigWindow()
     end
 
     configFrame = CreateFrame("Frame", "EzWoWTooltipConfig", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+    -- (taller than the screen: shrunk to fit, Libs/EzWoWGamePad)
+    if ns.GamePad and ns.GamePad.KeepOnScreen then ns.GamePad.KeepOnScreen(configFrame) end
     configFrame:SetSize(830, 660)
     configFrame:SetPoint("CENTER")
     configFrame:SetFrameStrata("FULLSCREEN_DIALOG")

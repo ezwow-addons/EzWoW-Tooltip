@@ -3,6 +3,14 @@
 -- Modules/ItemAndQuestExtras.lua : Item Stack/Price/Level & Quest Metadata Tooltip Enricher
 --===========================================================================
 local _, ns = ...
+-- every EzWoW line on the game's tooltips can be turned off at once (Game Menu >
+-- Options > AddOns > EzWoW - Data Sharing; Libs/EzWoWShare TooltipLinesOn)
+local function ezTipsOn()
+    local share = _G.EzWoW_Share
+    if type(share) ~= "table" or type(share.TooltipLinesOn) ~= "function" then return true end
+    local ok, on = pcall(share.TooltipLinesOn)
+    return not ok or on ~= false
+end
 local type, pairs, ipairs, tonumber, tostring, select, pcall = type, pairs, ipairs, tonumber, tostring, select, pcall
 local ItemQuestEnricher = ns.ItemQuestEnricher or {}
 ns.ItemQuestEnricher = ItemQuestEnricher
@@ -653,7 +661,7 @@ end
 -- Append Quest Tooltip Info
 -----------------------------------------------------------------------------
 function ItemQuestEnricher.appendQuestTooltipInfo(tip, link)
-    if not tip or not link or issecret(link) then return end
+    if not tip or not link or issecret(link) or not ezTipsOn() then return end
     local questIDVal = tonumber(string.match(link, "quest:(%d+)"))
     if not questIDVal or questIDVal <= 0 then return end
     appendDualNameToTitle(tip, "quest", questIDVal)

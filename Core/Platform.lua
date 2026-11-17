@@ -3,6 +3,14 @@
 -- Core/Platform.lua : Client API Compatibility Layer & Secret-Value Sanitizers
 --===========================================================================
 local _, ns = ...
+-- every EzWoW line on the game's tooltips can be turned off at once (Game Menu >
+-- Options > AddOns > EzWoW - Data Sharing; Libs/EzWoWShare TooltipLinesOn)
+local function ezTipsOn()
+    local share = _G.EzWoW_Share
+    if type(share) ~= "table" or type(share.TooltipLinesOn) ~= "function" then return true end
+    local ok, on = pcall(share.TooltipLinesOn)
+    return not ok or on ~= false
+end
 local type, pairs, ipairs, tonumber, tostring, select, pcall = type, pairs, ipairs, tonumber, tostring, select, pcall
 
 local PlatformBridge = ns.PlatformBridge or {}
@@ -366,6 +374,11 @@ function PlatformBridge.GetQuestLevel(questID)
 end
 
 function PlatformBridge.AddTooltipPostCall(dataTypeKey, legacyScriptName, handleSlashCommandInput)
+    -- (nothing is added while every EzWoW tooltip line is turned off)
+    local handler = handleSlashCommandInput
+    handleSlashCommandInput = function(...)
+        if ezTipsOn() then return handler(...) end
+    end
     local proc = _G.TooltipDataProcessor
     local enumTbl = _G.Enum and _G.Enum.TooltipDataType
     local dataTypeID = enumTbl and enumTbl[dataTypeKey]

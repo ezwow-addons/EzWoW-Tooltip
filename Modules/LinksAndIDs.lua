@@ -3,6 +3,14 @@
 -- Modules/LinksAndIDs.lua : Spell, Item & Aura Icon Prefix and Entry ID Appender
 --===========================================================================
 local addonName, ns = ...
+-- every EzWoW line on the game's tooltips can be turned off at once (Game Menu >
+-- Options > AddOns > EzWoW - Data Sharing; Libs/EzWoWShare TooltipLinesOn)
+local function ezTipsOn()
+    local share = _G.EzWoW_Share
+    if type(share) ~= "table" or type(share.TooltipLinesOn) ~= "function" then return true end
+    local ok, on = pcall(share.TooltipLinesOn)
+    return not ok or on ~= false
+end
 local type, pairs, ipairs, tonumber, tostring, select, pcall = type, pairs, ipairs, tonumber, tostring, select, pcall
 
 local EntryIdentifierAppender = ns.EntryIdentifierAppender or {}
@@ -23,6 +31,7 @@ local format = string.format
 -----------------------------------------------------------------------------
 
 function EntryIdentifierAppender.prefixTitleIcon(tip, tex)
+    if not ezTipsOn() then return end
     tex = nosecret(tex)
     if not tex or tex == "" or not tip then return end
     local tipName = tip.GetName and tip:GetName()
@@ -182,6 +191,7 @@ end
 
 -- returns true when lines were added
 function EntryIdentifierAppender.appendMountLines(tip, spellID)
+    if not ezTipsOn() then return false end
     spellID = tonumber(nosecret(spellID))
     local entry = spellID and mountBySpell[spellID]
     if not tip or not entry or not C_MountJournal then return false end
@@ -236,6 +246,7 @@ function EntryIdentifierAppender.hasIDRow(tip, rowText)
 end
 
 function EntryIdentifierAppender.appendIDRow(tip, kind, rawId)
+    if not ezTipsOn() then return end
     rawId = nosecret(rawId)
     if not rawId or rawId == "" or not EntryIdentifierAppender.wantIDRow() then return end
     local formatLocalizedLabel = rawget(addon.L, kind .. ".id") or ID_LABELS[kind] or ID or "ID"
@@ -306,6 +317,7 @@ EntryIdentifierAppender.bindAuraIDs("SetUnitDebuff")
 -- called from the UnitAura post-call (AuraCasterAndPTR.lua), which also covers
 -- the Set*ByAuraInstanceID methods; uses no aura API, so it works in combat
 function EntryIdentifierAppender.onAuraTooltip(tip, spellId)
+    if not ezTipsOn() then return end
     spellId = tonumber(nosecret(spellId))
     if not tip or not spellId then return end
     if addon.db.spell.showIcon then

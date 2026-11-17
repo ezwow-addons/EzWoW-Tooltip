@@ -3,6 +3,14 @@
 -- Core/EventBus.lua : Custom Signal Bus & WoW Frame Event Dispatcher
 --===========================================================================
 local _, ns = ...
+-- every EzWoW line on the game's tooltips can be turned off at once (Game Menu >
+-- Options > AddOns > EzWoW - Data Sharing; Libs/EzWoWShare TooltipLinesOn)
+local function ezTipsOn()
+    local share = _G.EzWoW_Share
+    if type(share) ~= "table" or type(share.TooltipLinesOn) ~= "function" then return true end
+    local ok, on = pcall(share.TooltipLinesOn)
+    return not ok or on ~= false
+end
 local type, pairs, ipairs, tonumber, tostring, select, pcall = type, pairs, ipairs, tonumber, tostring, select, pcall
 
 local EventDispatcher = ns.EventDispatcher or {}
@@ -75,7 +83,12 @@ function EventDispatcher:detachTrigger(signalNames, callback)
     EventDispatcher.unregisterSubscriber(signalSubscribers, signalNames, callback)
 end
 
+-- the signals that put this addon's lines on the game's item, spell and unit
+-- tooltips: not sent while every EzWoW tooltip line is turned off (the look
+-- and the place of the tooltips stay)
+local INFO_SIGNALS = { ["tooltip:item"] = true, ["tooltip:spell"] = true, ["tooltip:unit"] = true, ["tooltip:unit:post"] = true }
 function EventDispatcher:trigger(signalName, ...)
+    if INFO_SIGNALS[signalName] and not ezTipsOn() then return end
     EventDispatcher.invokeSubscribers(signalSubscribers[signalName], ...)
 end
 
