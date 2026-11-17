@@ -88,6 +88,7 @@ WoW Forever (`Interface: 16001`) · `/ezt`
 | ⑤ | 상점 방문 시 회색 잡템 자동 판매 · 모든 장비 자동 수리 (EzWoW - Bags가 있으면 그쪽에서 설정) | 켬 · 켬 |
 | ⑤ | 채팅창 링크에 마우스를 올리면 툴팁 표시 | 켬 |
 | ⑤ | Shift 없이 착용 장비 비교 툴팁 표시 (게임의 “항상 아이템 비교” 설정을 켭니다) | 끔 |
+| ⑤ | 창 밖으로 나가면 툴팁 닫기 (마우스를 빠르게 게임 창 밖으로 옮겨도 툴팁이 남지 않게. 게임패드를 쓸 때는 동작 안 함) | 켬 |
 | ⑥ | 기본값 복원 · 후원하기 | - |
 
 ### 명령어 (`/ezt`, `/et`, `/eztooltip`, `/ezwowtooltip`, `/툴팁`)
@@ -201,6 +202,7 @@ So that nothing shows twice, these addons take over the matching feature when th
 | ⑤ | Auto-sell grey junk · Auto-repair all gear at merchant (set in EzWoW - Bags when it is installed) | On · On |
 | ⑤ | Show tooltip when hovering chat links | On |
 | ⑤ | Compare with equipped gear without Shift (turns on the game's “always compare items” setting) | Off |
+| ⑤ | Close when the mouse leaves the game (no tooltip left behind when the mouse moves quickly out of the game window; not used with a gamepad) | On |
 | ⑥ | Reset Defaults · Support | - |
 
 ### Slash commands (`/ezt`, `/et`, `/eztooltip`, `/ezwowtooltip`, `/툴팁`)

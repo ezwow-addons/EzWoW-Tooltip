@@ -32,6 +32,7 @@ Clean dark card tooltips for WoW Forever, with extra information on players, NPC
 - Shops EzWoW users saw in the game show as a “Sold by:” line; recipes show where the recipe itself comes from.
 - Reagents show how many recipes use them.
 - **Compare with equipped gear without Shift** (option, off by default).
+- Tooltips close when the mouse moves quickly out of the game window (option, on by default).
 - Hover chat links to see their tooltip without clicking.
 
 ### Gathering skill
@@ -96,6 +97,7 @@ WoW Forever용 다크 카드 스타일 툴팁입니다. 플레이어 · NPC · �
 - EzWoW 사용자가 게임에서 확인한 상점은 “판매:” 줄로, 도안에는 도안 자체의 획득처가 나옵니다.
 - 재료에는 그 재료를 쓰는 제조법 수를 표시합니다.
 - **Shift 없이 착용 장비 비교** (옵션, 기본 꺼짐).
+- 마우스를 빠르게 게임 창 밖으로 옮기면 툴팁이 닫힙니다 (옵션, 기본 켬).
 - 채팅창 링크에 마우스를 올리기만 해도 툴팁 표시.
 
 ### 채집 숙련도

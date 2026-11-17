@@ -211,3 +211,53 @@ hooksecurefunc("GameTooltip_SetDefaultAnchor", function(tipFrame, ownerFrame)
     TooltipEngine:PositionTooltip(tipFrame, ownerFrame)
     EventDispatcher:trigger("tooltip:anchor", tipFrame, ownerFrame)
 end)
+
+-----------------------------------------------------------------------------
+-- Mouse moved out of the game window: the game keeps the cursor's last place,
+-- so the frame under it never gets OnLeave and its tooltip stays. A cursor
+-- that leaves the window was moving fast and then stops dead (the game no
+-- longer gets its moves); a hand that stops slows down first (measured in the
+-- game: about 60-90 per second at a stop, 2,000 and more when leaving). Fast,
+-- then still for a moment: the tooltips are closed. Not while turning the
+-- camera, and not with a gamepad (its cursor jumps between buttons).
+-----------------------------------------------------------------------------
+do
+    local LEAVE_SPEED = 1000    -- cursor units per second (the screen is 768 high in them)
+    local STILL_TIME = 0.3      -- seconds without a move
+    local lastX, lastY
+    local speed, sinceMove, done = 0, 0, false
+
+    local function closeTooltips()
+        local g = TooltipEngine.db and TooltipEngine.db.general
+        if g and g.closeOnWindowLeave == false then return end
+        if type(IsMouselooking) == "function" and IsMouselooking() then return end
+        if type(IsUsingGamepad) == "function" and IsUsingGamepad() then return end
+        if GameTooltip and GameTooltip:IsShown() and not AnchorPlacementEngine.isFrameForbidden(GameTooltip) then
+            -- a new owner first: buttons that redraw their own tooltip while
+            -- they own it (action buttons, bag slots) don't bring it back
+            pcall(GameTooltip.SetOwner, GameTooltip, UIParent, "ANCHOR_NONE")
+            GameTooltip:Hide()
+        end
+        for _, tip in ipairs({ _G.ShoppingTooltip1, _G.ShoppingTooltip2 }) do
+            if tip and tip:IsShown() then tip:Hide() end
+        end
+    end
+
+    local watcher = CreateFrame("Frame")
+    watcher:SetScript("OnUpdate", function(_, elapsed)
+        local x, y = GetCursorPosition()
+        if type(x) ~= "number" or type(y) ~= "number" or PlatformBridge.issecret(x) or PlatformBridge.issecret(y) then return end
+        sinceMove = sinceMove + (elapsed or 0)
+        if x ~= lastX or y ~= lastY then
+            if lastX then
+                local dx, dy = x - lastX, y - lastY
+                speed = math.sqrt(dx * dx + dy * dy) / math.max(sinceMove, 0.001)
+            end
+            lastX, lastY, sinceMove, done = x, y, 0, false
+            return
+        end
+        if done or sinceMove < STILL_TIME then return end
+        done = true
+        if speed >= LEAVE_SPEED then pcall(closeTooltips) end
+    end)
+end

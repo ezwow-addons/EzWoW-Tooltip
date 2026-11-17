@@ -77,10 +77,10 @@ local ORE_NODES = {
     { 245, "Small Thorium Vein",              "작은 토륨 광맥" },
     { 275, "Rich Thorium Vein",               "풍부한 토륨 광맥" },
     { 75,  "Ooze Covered Silver Vein",        false },
-    { 155, "Ooze Covered Gold Vein",          false },
-    { 175, "Ooze Covered Mithril Deposit",    false },
+    { 155, "Ooze Covered Gold Vein",          "진흙으로 덮인 금 광맥" },
+    { 175, "Ooze Covered Mithril Deposit",    "진흙으로 덮인 미스릴 광맥" },
     { 230, "Ooze Covered Truesilver Deposit", false },
-    { 245, "Ooze Covered Thorium Vein",       false },
+    { 245, "Ooze Covered Thorium Vein",       "진흙으로 덮인 토륨 광맥" },
     { 275, "Ooze Covered Rich Thorium Vein",  false },
     { 275, "Hakkari Thorium Vein",            false },
 }
@@ -530,14 +530,19 @@ local function cursorReach(perYard, offsetYards)
     return math.max(6, math.min(60, 12 / perYard + (offsetYards or 0) * 0.13))
 end
 
--- Node kinds with a spawn point under the cursor, nearest first (at most 3).
-function GatherSkill.nodesUnderCursor()
+-- Node kinds with a spawn point near the cursor (reachScale times the usual
+-- reach): { { key = key, distance = squared yards }, ... }, nearest first.
+function GatherSkill.nodeCandidates(reachScale, fixedReach)
     local wantHerbs, wantOres = GatherSkill.trackedKinds()
     if not (wantHerbs or wantOres) then return {} end
     if not GatherSkill.buildSpawnGrid() then return {} end
     local continent, worldX, worldY, perYard, offsetYards = GatherSkill.cursorWorldPosition()
     if not continent then return {} end
     local reach = cursorReach(perYard, offsetYards)
+    -- (a wider look stays within 60 yards, so a far node with a name of the
+    -- same length is not taken)
+    if reachScale and reachScale > 1 then reach = math.min(reach * reachScale, math.max(reach, 60)) end
+    if fixedReach then reach = fixedReach end
     local bestDistance = {}
     local cellX0, cellX1 = math.floor((worldX - reach) / SPAWN_CELL), math.floor((worldX + reach) / SPAWN_CELL)
     local cellY0, cellY1 = math.floor((worldY - reach) / SPAWN_CELL), math.floor((worldY + reach) / SPAWN_CELL)
@@ -561,6 +566,12 @@ function GatherSkill.nodesUnderCursor()
     local found = {}
     for key, distance in pairs(bestDistance) do found[#found + 1] = { key = key, distance = distance } end
     table.sort(found, function(a, b) return a.distance < b.distance end)
+    return found
+end
+
+-- Node kinds with a spawn point under the cursor, nearest first (at most 3).
+function GatherSkill.nodesUnderCursor()
+    local found = GatherSkill.nodeCandidates(1)
     -- the nearest kind, plus others about as near (two nodes under one icon)
     local result = {}
     local nearest = found[1] and math.sqrt(found[1].distance)
@@ -568,6 +579,117 @@ function GatherSkill.nodesUnderCursor()
         if math.sqrt(found[i].distance) <= nearest + 10 then result[#result + 1] = nodeMeta[found[i].key] end
     end
     return result
+end
+
+-- Which node the minimap shows, by width. Its text is secret, but the
+-- tooltip's own width can be read (checked in game): with only the game's
+-- line it is the node name's width plus the side insets. Each kind near the
+-- cursor has its name measured in the same font; the nearest kind whose name
+-- fits that width is the node (names one letter apart differ by a whole
+-- letter, about 10 or more).
+-- The tooltip comes out a fraction wider than its line (0.48 in game), so a
+-- name fits from 0.3 below to 1 above; names differ by a pixel or more.
+local FIT_LOW, FIT_HIGH = -0.3, 1.0
+local WIDE_REACH = 400               -- yards: the second, wider look
+local measurer
+local nameWidths = {}
+
+-- The first line's font (its own, else the header font it is made with: a
+-- line holding a secret text may not tell its font).
+local function lineFont(fontString)
+    local path, size, flags
+    if fontString and fontString.GetFont then
+        local isCallOk, p, s, f = pcall(fontString.GetFont, fontString)
+        if isCallOk then path, size, flags = nosecret(p), nosecret(s), nosecret(f) end
+    end
+    if type(path) ~= "string" or type(size) ~= "number" then
+        local header = _G.GameTooltipHeaderText
+        if not (header and header.GetFont) then return nil end
+        path, size, flags = header:GetFont()
+        path, size, flags = nosecret(path), nosecret(size), nosecret(flags)
+        if type(path) ~= "string" or type(size) ~= "number" then return nil end
+    end
+    return path, size, type(flags) == "string" and flags or ""
+end
+
+local function measureName(fontString, label)
+    if type(label) ~= "string" or label == "" then return nil end
+    local path, size, flags = lineFont(fontString)
+    if not path then return nil end
+    local cacheKey = path .. "|" .. size .. "|" .. tostring(flags) .. "|" .. label
+    local known = nameWidths[cacheKey]
+    if known then return known end
+    if not measurer then
+        local holder = CreateFrame("Frame", nil, UIParent)
+        holder:Hide()
+        measurer = holder:CreateFontString(nil, "OVERLAY")
+    end
+    if not pcall(measurer.SetFont, measurer, path, size, flags) then return nil end
+    measurer:SetText(label)
+    local width = measurer.GetUnboundedStringWidth and measurer:GetUnboundedStringWidth() or measurer:GetStringWidth()
+    width = nosecret(width)
+    if type(width) ~= "number" or width <= 0 then return nil end
+    nameWidths[cacheKey] = width
+    return width
+end
+
+-- The tooltip's width minus its longest line: the line's offset on both sides
+-- plus any padding.
+local function sideInsets(tipFrame, firstLine)
+    -- (10 on each side; the line's own offset reads secret or 0 there)
+    local insets = 20
+    if type(tipFrame.GetPadding) == "function" then
+        local isCallOk, right, _, left = pcall(tipFrame.GetPadding, tipFrame)
+        if isCallOk then
+            right, left = nosecret(right), nosecret(left)
+            insets = insets + (type(right) == "number" and right or 0) + (type(left) == "number" and left or 0)
+        end
+    end
+    return insets
+end
+
+-- Names this addon knows exactly as the game shows them: Korean node names and
+-- English names. Elsewhere the ore names are English only.
+local function namesExact()
+    local locale = type(_G.GetLocale) == "function" and _G.GetLocale() or ""
+    return locale == "koKR" or locale == "enUS" or locale == "enGB"
+end
+
+-- Nodes under the cursor picked by width: a list (may be empty) when the width
+-- could be read, nil when it could not (the caller then goes by place alone).
+function GatherSkill.nodesByWidth(tipFrame)
+    local firstLine = addon.LineRegions(tipFrame, 1)
+    if not firstLine then return nil end
+    tipFrame:Show()   -- lays the tooltip out with only the game's lines
+    local tipWidth = nosecret(tipFrame:GetWidth())
+    if type(tipWidth) ~= "number" or tipWidth <= 0 then return nil end
+    local insets = sideInsets(tipFrame, firstLine)
+    -- a node above or below the player gets an arrow before its name, as
+    -- wide as the font is high (12.0 at size 12 in game)
+    local _, fontSize = lineFont(firstLine)
+    local arrowWidth = type(fontSize) == "number" and fontSize or 0
+    local function fits(rest) return rest >= FIT_LOW and rest <= FIT_HIGH end
+    local measured = false
+    local function nearestFitting(candidates)
+        for _, candidate in ipairs(candidates) do
+            local meta = nodeMeta[candidate.key]
+            local width = meta and measureName(firstLine, meta[3])
+            if width then
+                measured = true
+                local rest = tipWidth - width - insets
+                if fits(rest) or (arrowWidth > 0 and fits(rest - arrowWidth)) then return meta end
+            end
+        end
+        return nil
+    end
+    -- near the cursor first; the game's spawn points are not always where the
+    -- data has them, so then the nearest fitting kind around (this part of
+    -- the zone)
+    local meta = nearestFitting(GatherSkill.nodeCandidates(2))
+        or nearestFitting(GatherSkill.nodeCandidates(nil, WIDE_REACH))
+    -- no name could be measured: by place alone
+    if not measured then return nil end
+    return meta and { meta } or {}
 end
 
 local function hasSecretText(tipFrame, tooltipData)
@@ -641,10 +763,16 @@ function GatherSkill.onMinimapTooltip(tipFrame, tooltipData)
         end
     end
     if #foundNodes == 0 then
-        -- the text is secret: the nodes are found by place, named on each line
+        -- the text is secret: the node is the nearest one whose name fits the
+        -- tooltip's width; by place alone only when the width can't be read
+        -- (or, outside Korean and English, no name fits)
         if not hasSecretText(tipFrame, tooltipData) then return end
-        local isCallOk, nearNodes = pcall(GatherSkill.nodesUnderCursor)
-        if not isCallOk or type(nearNodes) ~= "table" or #nearNodes == 0 then return end
+        local okWidth, nearNodes = pcall(GatherSkill.nodesByWidth, tipFrame)
+        if not okWidth or type(nearNodes) ~= "table" or (#nearNodes == 0 and not namesExact()) then
+            local isCallOk, byPlace = pcall(GatherSkill.nodesUnderCursor)
+            nearNodes = isCallOk and byPlace or nil
+        end
+        if type(nearNodes) ~= "table" or #nearNodes == 0 then return end
         for _, meta in ipairs(nearNodes) do
             tipFrame:AddLine(GatherSkill.composeLine(meta[1], meta[2], meta[3]))
         end

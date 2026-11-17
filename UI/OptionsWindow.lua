@@ -698,6 +698,14 @@ LOCALES.esES.showEquipCompare = "Comparar equipo sin Mayús"
 LOCALES.ruRU.showEquipCompare = "Сравнение с надетым без Shift"
 LOCALES.zhCN.showEquipCompare = "无需 Shift 即比较已装备物品"
 LOCALES.zhTW.showEquipCompare = "無需 Shift 即比較已裝備物品"
+L_EN.closeOnWindowLeave = "Close when the mouse leaves the game"
+LOCALES.koKR.closeOnWindowLeave = "창 밖으로 나가면 툴팁 닫기"
+LOCALES.deDE.closeOnWindowLeave = "Schließen, wenn die Maus das Spiel verlässt"
+LOCALES.frFR.closeOnWindowLeave = "Fermer quand la souris quitte le jeu"
+LOCALES.esES.closeOnWindowLeave = "Cerrar al sacar el ratón del juego"
+LOCALES.ruRU.closeOnWindowLeave = "Скрывать, когда мышь покидает игру"
+LOCALES.zhCN.closeOnWindowLeave = "鼠标移出游戏窗口时关闭"
+LOCALES.zhTW.closeOnWindowLeave = "滑鼠移出遊戲視窗時關閉"
 
 local OPTION_TIPS_KO = {
     mask            = "툴팁 상단에 은은한 밝기 그라데이션(광택) 효과를 표시합니다.",
@@ -736,6 +744,7 @@ local OPTION_TIPS_KO = {
     autoSellJunk    = "상점 창을 열었을 때 가방에 있는 회색(하급) 잡템을 자동으로 판매하고 획득 금액을 안내합니다. (Shift를 누른 채 상점을 열면 건너뜀)",
     autoRepair      = "수리 가능한 상인을 열었을 때 착용 및 가방의 모든 장비를 자동으로 수리합니다. (Shift를 누른 채 상점을 열면 건너뜀)",
     showEquipCompare = "아이템에 마우스를 올리면 Shift 키를 누르지 않아도 현재 착용 중인 장비와 비교하는 툴팁을 나란히 표시합니다. (게임의 '항상 아이템 비교' 설정을 켭니다)",
+    closeOnWindowLeave = "마우스를 빠르게 게임 창 밖으로 옮기면 게임이 커서의 마지막 위치를 기억해 툴팁이 남습니다. 커서가 빠르게 움직이다 갑자기 멈추면 창 밖으로 나간 것으로 보고 툴팁을 닫습니다. 게임패드를 쓸 때는 동작하지 않습니다.",
     chatLinkHover   = "채팅창에 올라온 아이템·주문·퀘스트·업적 링크에 마우스를 올리기만 해도 툴팁을 보여 줍니다. 클릭하지 않아도 됩니다.",
     showGatherSkill = "약초·광맥 툴팁과 가죽을 벗길 수 있는 시체 툴팁에 필요한 숙련도와 현재 숙련도를 난이도 색(빨강·주황·노랑·초록·회색)으로 표시합니다.",
 }
@@ -777,6 +786,7 @@ local OPTION_TIPS_EN = {
     autoSellJunk    = "Automatically sells all poor-quality (grey) items in your bags when visiting a merchant (hold Shift while opening to skip).",
     autoRepair      = "Automatically repairs all damaged equipment when visiting a repair-capable merchant (hold Shift while opening to skip).",
     showEquipCompare = "Shows the comparison with your equipped gear next to item tooltips without holding Shift (turns on the game's 'always compare items' setting).",
+    closeOnWindowLeave = "When the mouse moves quickly out of the game window, the game keeps the cursor's last place and the tooltip stays. A cursor that stops dead right after moving fast is taken as leaving the window, and the tooltips are closed. Not used with a gamepad.",
     chatLinkHover   = "Shows the tooltip for item, spell, quest, and achievement links in chat as soon as you hover them, without clicking.",
     showGatherSkill = "Shows the required and your current skill on herb, ore and skinnable corpse tooltips, in difficulty colours (red, orange, yellow, green, grey).",
 }
@@ -1699,6 +1709,9 @@ function SettingsDialog.launchConfigWindow()
             addon.db.item.showEquipCompare = entryValue
             if addon.SyncEquipCompare then addon.SyncEquipCompare() end
         end)
+    createStyledCheckbox(552, -548, 228, "closeOnWindowLeave",
+        function() return addon.db.general.closeOnWindowLeave ~= false end,
+        function(entryValue) addon.db.general.closeOnWindowLeave = entryValue end)
 
     local resetBtn, resetText = createStyledButton(195, -588, 210, 30, false, function()
         SettingsDialog.resetAllToDefaults()

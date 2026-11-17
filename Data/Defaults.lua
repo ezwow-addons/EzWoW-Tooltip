@@ -40,6 +40,7 @@ addon.db = {
         anchor            = anchor("cursor", { cursorDir = "topRight", returnInCombat = true }),
         alwaysShowIdInfo  = true,
         fadeOut           = false,
+        closeOnWindowLeave = true,     -- close tooltips when the mouse leaves the game window
         skinMoreFrames    = true,
         hideIssueReport   = true,       -- runs only while EzWoW-ErrorCatcher is not loaded
         showGatherSkill   = true,

@@ -1044,6 +1044,12 @@ EXTRA_LOCALE.esES["tip_showEquipCompare"] = "Muestra la comparación con el equi
 EXTRA_LOCALE.ruRU["tip_showEquipCompare"] = "Показывает сравнение с надетой экипировкой рядом с подсказкой предмета без удержания Shift (включает игровую настройку «всегда сравнивать предметы»)."
 EXTRA_LOCALE.zhCN["tip_showEquipCompare"] = "无需按住 Shift，即在物品提示旁显示与当前装备的比较（开启游戏的“总是比较物品”设置）。"
 EXTRA_LOCALE.zhTW["tip_showEquipCompare"] = "無需按住 Shift，即在物品提示旁顯示與目前裝備的比較（開啟遊戲的「總是比較物品」設定）。"
+EXTRA_LOCALE.deDE["tip_closeOnWindowLeave"] = "Bewegt man die Maus schnell aus dem Spielfenster, merkt sich das Spiel die letzte Position und der Tooltip bleibt stehen. Stoppt der Mauszeiger nach schneller Bewegung abrupt, gilt das als Verlassen des Fensters und die Tooltips werden geschlossen. Nicht beim Gamepad."
+EXTRA_LOCALE.frFR["tip_closeOnWindowLeave"] = "Si la souris sort vite de la fenêtre du jeu, le jeu garde la dernière position du curseur et l'infobulle reste affichée. Un curseur qui s'arrête net après un mouvement rapide est considéré comme sorti de la fenêtre et les infobulles sont fermées. Pas avec une manette."
+EXTRA_LOCALE.esES["tip_closeOnWindowLeave"] = "Si sacas el ratón rápido de la ventana del juego, el juego guarda la última posición del cursor y la descripción se queda. Un cursor que se detiene en seco tras moverse rápido se toma como salida de la ventana y se cierran las descripciones. No con mando."
+EXTRA_LOCALE.ruRU["tip_closeOnWindowLeave"] = "Если быстро увести мышь за окно игры, игра запоминает последнее положение курсора и подсказка остаётся. Курсор, резко остановившийся после быстрого движения, считается вышедшим за окно, и подсказки закрываются. Не работает с геймпадом."
+EXTRA_LOCALE.zhCN["tip_closeOnWindowLeave"] = "鼠标快速移出游戏窗口时，游戏会保留光标的最后位置，提示不会消失。光标快速移动后突然停住时，视为移出窗口并关闭提示。使用手柄时不生效。"
+EXTRA_LOCALE.zhTW["tip_closeOnWindowLeave"] = "滑鼠快速移出遊戲視窗時，遊戲會保留游標的最後位置，提示不會消失。游標快速移動後突然停住時，視為移出視窗並關閉提示。使用手把時不生效。"
 -- vendor prices: what vendors ask
 EXTRA_LOCALE.koKR["buyPrice"] = "상점 구입가"
 EXTRA_LOCALE.enUS["buyPrice"] = "Vendor Buy Price"
