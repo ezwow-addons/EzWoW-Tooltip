@@ -524,7 +524,11 @@ function AuctionPriceScanner.prepareAuctionScanButton()
     if not parentFrame then return end
 
     if not ahScanState.btn then
-        local actionBtn = CreateFrame("Button", "EzWoWTooltipAHScanButton", parentFrame, BackdropTemplateMixin and "BackdropTemplate" or nil)
+        -- with the gamepad UI on, made without a parent and put in afterwards: a frame made
+        -- inside the open auction window breaks the game's gamepad navigation (Libs/EzWoWGamePad)
+        local pad = ns.GamePad
+        local make = (pad and pad.MakeFrame and pad.IsActive and pad.IsActive() and pad.MakeFrame) or CreateFrame
+        local actionBtn = make("Button", "EzWoWTooltipAHScanButton", parentFrame, BackdropTemplateMixin and "BackdropTemplate" or nil)
         actionBtn:SetSize(164, 22)
         if actionBtn.SetBackdrop then
             ns.UIKit:ApplyBackdrop(actionBtn)
