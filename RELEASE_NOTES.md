@@ -1,13 +1,13 @@
-# v2.0.30
+# v2.0.31
 
 ### 한국어
-- "상점 판매가" 줄의 개수(×N)가 가진 전체 개수로 나와, 링크·전리품이나 겹치지 않는 장비에도 줄이 하나 더 붙던 문제를 고쳤습니다. 이제 마우스 아래 묶음의 개수를 씁니다.
-- EzWoW 가방에서도 묶음에 마우스를 올리면 상점 판매가·구입가가 묶음 개수(×N)로 나옵니다.
-- 애드온에 든 데이터가 다 있으면 공용 데이터 애드온의 데이터를 불러오지 않아 메모리를 덜 씁니다.
-- 공유 기록 저장 데이터가 오래 쓰면 조금씩 커지던 문제를 고쳤습니다.
+- 툴팁의 공유 기록 줄(판매·드롭·희귀 목격)을 끌 수 있습니다: `/ezshare tooltip off` 또는 공유 창(`/ezshare`)의 "툴팁 줄" 버튼.
+- 게임패드: 아이템에서 X(오른쪽 클릭)로 아이템을 쓰면 "애드온으로 인해 인터페이스 작동이 실패했습니다"가 뜨며 쓰이지 않던 문제와, View 버튼으로 화면의 EzWoW 요소(퀘스트 목록·유틸리티바 등)를 고르지 못하던 문제를 고쳤습니다.
+- 게임패드: 경매장을 열 때 게임의 패드 조작이 막힐 수 있던 문제를 고쳤습니다.
+- 게임패드: 게임이 숫자(1 2 3 4)로 보여 주는 패드도 제조사(소니·마이크로소프트·닌텐도)를 알아보고 EzWoW 패드 안내에 맞는 버튼 그림을 보여 줍니다.
 
 ### English
-- Fixed the vendor sell price line counting every copy you own (×N), which added an extra line to links, loot and non-stacking gear. It now uses the stack under the mouse.
-- Stacks in EzWoW bags now show the vendor sell and buy prices for the whole stack (×N).
-- Uses less memory: the shared data addon's modules are no longer loaded when the addon's own data is complete.
-- Fixed shared-record save data slowly growing over long use.
+- Shared lines on tooltips (sold by, drops, rare sightings) can be turned off with `/ezshare tooltip off` or the "Tooltip lines" button in the sharing window (`/ezshare`).
+- Gamepad: fixed "Interface action failed because of an AddOn" when using an item with X (right-click), and the View button reaches the EzWoW frames on screen (quest list, utility bar...) again.
+- Gamepad: opening the auction house no longer risks breaking the game's gamepad controls.
+- Gamepad: for pads the game shows with numbers (1 2 3 4), the EzWoW key guide now shows the maker's button pictures (Sony, Microsoft, Nintendo).
