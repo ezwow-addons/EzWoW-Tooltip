@@ -172,6 +172,15 @@ end
 
 local bootstrapDone = {}
 
+-- the tooltips that compare with equipped gear (next to item tooltips)
+local COMPARISON_TOOLTIPS = { "ShoppingTooltip1", "ShoppingTooltip2", "ItemRefShoppingTooltip1", "ItemRefShoppingTooltip2" }
+function CardThemeRenderer.isComparisonTooltip(tip)
+    for _, frameName in ipairs(COMPARISON_TOOLTIPS) do
+        if tip == _G[frameName] then return true end
+    end
+    return false
+end
+
 -- Safe to restyle? Forbidden tooltips are off limits, and tooltips built from an
 -- inherited forbidden layout do not report IsForbidden, but their size reads back
 -- secret (or the read fails), so probe the width as well.
@@ -199,6 +208,10 @@ function CardThemeRenderer.skin(tip)
     if not bootstrapDone[tip] then
         bootstrapDone[tip] = true
         tip:HookScript("OnShow", function(self)
+            -- (a comparison tooltip shown again keeps none of the game's border)
+            if CardThemeRenderer.isComparisonTooltip(self) and tooltipCards[self] then
+                CardThemeRenderer.paintCard(self, tooltipCards[self])
+            end
             CardThemeRenderer.refreshBand(self)
             -- line 1 may only get its final size on the next layout pass
             if C_Timer and C_Timer.After then
@@ -478,7 +491,15 @@ bus:attachTrigger("tooltip:cleared", function(_, tip) addon:RestoreDefaultToolti
 -- frame instead, once per tooltip however many calls arrive in between.
 local pendingReassert = platformHelper.weakTable()
 function CardThemeRenderer.reassert(tip)
-    if not tip or platformHelper.issecret(tip) or not tooltipCards[tip] or pendingReassert[tip] then return end
+    if not tip or platformHelper.issecret(tip) or not tooltipCards[tip] then return end
+    -- comparison tooltips at once: on bag slots they are drawn again every
+    -- 0.2 s, and a frame late showed the game's border each time (a flashing
+    -- border); no secure code uses them
+    if CardThemeRenderer.isComparisonTooltip(tip) then
+        if CardThemeRenderer.isTooltipUsable(tip) then CardThemeRenderer.paintCard(tip, tooltipCards[tip]) end
+        return
+    end
+    if pendingReassert[tip] then return end
     if not (C_Timer and C_Timer.After) then return end
     pendingReassert[tip] = true
     C_Timer.After(0, function()
