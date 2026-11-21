@@ -70,7 +70,7 @@ WoW Forever (`Interface: 16001`) · `/ezt`
 | ② | 툴팁 크기 50~200% · 배경 투명도 10~100% | 100% · 92% |
 | ② | 툴팁 상단 광택 효과 · 서서히 사라지기 | 켬 · 끔 |
 | ② | 드롭다운 · 부가 메뉴 스킨 적용 (/reload 필요) · 캐릭터별 설정 따로 저장 | 켬 · 끔 |
-| ③ | 위치: 마우스 따라가기 / 게임 기본 위치 / 고정 위치 | 마우스 따라가기 |
+| ③ | 위치: 마우스 따라가기 / 게임 기본 위치 / 고정 위치 (마우스 따라가기는 다른 EzWoW 애드온의 버튼·가방 칸·지도 표시 툴팁에도 적용) | 마우스 따라가기 |
 | ③ | 마우스 따라가기 방향: 상단 왼쪽 · 중앙 · 오른쪽 / 하단 왼쪽 · 중앙 · 오른쪽 | 상단 오른쪽 |
 | ③ | 고정 위치 조절 (`/ezt static`): 상자를 끌어 위치를 정하고 모서리 점으로 기준점을 바꿉니다. | - |
 | ③ | 전투 중 툴팁 숨기기 · 전투 중 기본 위치로 전환 · 유닛 프레임 위에서 기본 위치 사용 | 끔 · 켬 · 끔 |
@@ -184,7 +184,7 @@ So that nothing shows twice, these addons take over the matching feature when th
 | ② | Scale 50–200% · Opacity 10–100% | 100% · 92% |
 | ② | Top glossy highlight · Fade out smoothly | On · Off |
 | ② | Skin dropdown & extra menus (needs /reload) · Save settings per character | On · Off |
-| ③ | Anchor: Follow Cursor / Game Default / Static Point | Follow Cursor |
+| ③ | Anchor: Follow Cursor / Game Default / Static Point (Follow Cursor also applies to the other EzWoW addons' buttons, bag slots and map marks) | Follow Cursor |
 | ③ | Cursor direction: Top Left · Center · Right / Bottom Left · Center · Right | Top Right |
 | ③ | Adjust Static Position (`/ezt static`): drag the box to place it and click a corner to set the growth anchor. | - |
 | ③ | Hide in combat · Default pos in combat · Use default position on unit frames | Off · On · Off |

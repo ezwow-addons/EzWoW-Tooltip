@@ -54,23 +54,64 @@ local cursorDriver = CreateFrame("Frame")
 cursorDriver:Hide()
 local activeCursorTarget = nil
 
+-- Near a screen edge the tooltip did not fit on the chosen side; the game then pushed it back onto the screen,
+-- over the mouse and the thing pointed at (bag slots at the top of the screen, 2026-11-21). It goes to the other
+-- side (above <-> below, right <-> left) when that side has room.
+local FLIP_V = { topLeft = "bottomLeft", topCenter = "bottomCenter", topRight = "bottomRight",
+                 bottomLeft = "topLeft", bottomCenter = "topCenter", bottomRight = "topRight" }
+local FLIP_H = { topLeft = "topRight", topRight = "topLeft", bottomLeft = "bottomRight", bottomRight = "bottomLeft" }
+
+local function fittingDirection(dir, tipFrame, posX, posY, effScale)
+    if not CURSOR_PRESETS[dir or ""] then return dir end
+    local okW, w = pcall(tipFrame.GetWidth, tipFrame)
+    local okH, h = pcall(tipFrame.GetHeight, tipFrame)
+    if not okW or not okH or PlatformBridge.issecret(w) or PlatformBridge.issecret(h)
+        or type(w) ~= "number" or type(h) ~= "number" then
+        return dir
+    end
+    local uiScale = UIParent:GetEffectiveScale()
+    local screenW, screenH = UIParent:GetWidth() * uiScale, UIParent:GetHeight() * uiScale
+    w, h = w * effScale, h * effScale                      -- all in screen pixels, like the cursor
+    local function fitsV(d)
+        local y = posY + CURSOR_PRESETS[d].cy * effScale
+        if d:find("^top") then return y + h <= screenH end
+        return y - h >= 0
+    end
+    local function fitsH(d)
+        local x = posX + CURSOR_PRESETS[d].cx * effScale
+        if d:find("Right$") then return x + w <= screenW end
+        if d:find("Left$") then return x - w >= 0 end
+        return x - w / 2 >= 0 and x + w / 2 <= screenW
+    end
+    if not fitsV(dir) and FLIP_V[dir] and fitsV(FLIP_V[dir]) then dir = FLIP_V[dir] end
+    if not fitsH(dir) and FLIP_H[dir] and fitsH(FLIP_H[dir]) then dir = FLIP_H[dir] end
+    return dir
+end
+
 function AnchorPlacementEngine.refreshCursorTooltipPosition()
     if not activeCursorTarget then return end
     local tipFrame = activeCursorTarget.tip
     local posX, posY = GetCursorPosition()
     local effScale = tipFrame:GetEffectiveScale()
-    if activeCursorTarget.lastX == posX and activeCursorTarget.lastY == posY and activeCursorTarget.lastScale == effScale then
-        return
+    local dir = fittingDirection(activeCursorTarget.dir, tipFrame, posX, posY, effScale)
+    local preset = CURSOR_PRESETS[dir or ""]
+    local point = preset and preset.cp or activeCursorTarget.point
+    local dx = preset and preset.cx or activeCursorTarget.dx
+    local dy = preset and preset.cy or activeCursorTarget.dy
+    if activeCursorTarget.lastX == posX and activeCursorTarget.lastY == posY and activeCursorTarget.lastScale == effScale
+        and activeCursorTarget.curDir == dir then
+        -- the mouse did not move: only when something else re-anchored the tooltip (the game's own refresh of a
+        -- button's tooltip) is it put back, so it never jumps between that place and the mouse
+        local okP, curPoint, relFrame = pcall(tipFrame.GetPoint, tipFrame, 1)
+        if okP and not PlatformBridge.issecret(curPoint) and not PlatformBridge.issecret(relFrame)
+            and curPoint == point and relFrame == UIParent then
+            return
+        end
     end
     activeCursorTarget.lastX, activeCursorTarget.lastY, activeCursorTarget.lastScale = posX, posY, effScale
+    activeCursorTarget.curDir = dir
     tipFrame:ClearAllPoints()
-    tipFrame:SetPoint(
-        activeCursorTarget.point,
-        UIParent,
-        "BOTTOMLEFT",
-        posX / effScale + activeCursorTarget.dx,
-        posY / effScale + activeCursorTarget.dy
-    )
+    tipFrame:SetPoint(point, UIParent, "BOTTOMLEFT", posX / effScale + dx, posY / effScale + dy)
 end
 
 cursorDriver:SetScript("OnUpdate", function()
@@ -90,9 +131,89 @@ function AnchorPlacementEngine.releaseCursorTracking(tipFrame)
 end
 
 local internalOwnerLock = false
-hooksecurefunc(GameTooltip, "SetOwner", function(tipFrame)
+
+-- The EzWoW addons' own buttons, bag slots, map marks and windows put their tooltip next to the icon
+-- (GameTooltip:SetOwner(self, "ANCHOR_RIGHT") and the like), which passed by the placement rule above
+-- (only the game's default anchor goes through it). When the player chose a tooltip that follows the
+-- mouse, those tooltips follow it too (2026-11-21). Owners that place the tooltip themselves
+-- (ANCHOR_NONE) or already use the cursor are left alone, and so is the gamepad (its cursor jumps).
+local CURSOR_MODES = { cursor = true, cursorRight = true }
+local function calledByEzWoW()
+    if type(debugstack) ~= "function" then return false end
+    local ok, stack = pcall(debugstack, 2, 10, 0)
+    if not ok or type(stack) ~= "string" then return false end
+    for line in stack:gmatch("[^\n]+") do
+        -- this file's own frames (the hook and its helpers) are on the stack too
+        if line:find("AddOns[\\/]EzWoW%-") and not line:find("AnchorPosition%.lua") then return true end
+    end
+    return false
+end
+-- the cursor setting, when it applies to this tooltip now (nil otherwise); anyTip: an EzWoW addon's own
+-- tooltip frame asked through TooltipEngine.FollowCursor (else only the game's GameTooltip)
+local function cursorSettingFor(tipFrame, ownerFrame, anyTip)
+    if (tipFrame ~= GameTooltip and not anyTip) or type(tipFrame) ~= "table" or not TooltipEngine.db then return nil end
+    local cfg = TooltipEngine.db.general and TooltipEngine.db.general.anchor
+    if type(cfg) ~= "table" or not CURSOR_MODES[cfg.position] then return nil end
+    if cfg.returnInCombat and InCombatLockdown() then return nil end
+    if type(IsUsingGamepad) == "function" and IsUsingGamepad() then return nil end
+    if AnchorPlacementEngine.isFrameForbidden(tipFrame) or AnchorPlacementEngine.isFrameForbidden(ownerFrame) then
+        return nil
+    end
+    return cfg
+end
+
+function AnchorPlacementEngine.followCursorForEzWoW(tipFrame, ownerFrame, anchorType)
+    -- ANCHOR_NONE: the caller places the tooltip itself (or it is a hidden scanning tooltip). The game's own
+    -- cursor anchors (ANCHOR_CURSOR...) are taken over too, so every EzWoW tooltip uses the chosen direction.
+    if anchorType == nil or anchorType == "ANCHOR_NONE" or PlatformBridge.issecret(anchorType) then
+        return false
+    end
+    local cfg = cursorSettingFor(tipFrame, ownerFrame)
+    if not cfg or not calledByEzWoW() then return false end
+    AnchorPlacementEngine.bindTooltipToCursor(tipFrame, ownerFrame, cfg)
+    return true
+end
+
+-- For the EzWoW addons' own tooltip frames (not GameTooltip): EzWoW_Tooltip.FollowCursor(tip, owner) owns the
+-- tooltip and keeps it at the mouse in the chosen direction when the setting follows the mouse; returns false
+-- otherwise (the caller then uses its own anchor).
+function TooltipEngine.FollowCursor(tipFrame, ownerFrame)
+    local cfg = cursorSettingFor(tipFrame, ownerFrame, true)
+    if not cfg then return false end
+    AnchorPlacementEngine.bindTooltipToCursor(tipFrame, ownerFrame, cfg)
+    return true
+end
+
+-- EzWoW - Bags' item slots use the game's bag button template: the game places the tooltip beside the slot
+-- (ContainerFrameItemButton_CalculateItemTooltipAnchors, on mouse-over and on every tooltip refresh) from its
+-- own code, so no EzWoW file is on the stack. Those slots (named EzWoWBagsSlot#) follow the cursor too. The
+-- tooltip is already filled here, so only its points move (no SetOwner, which would clear it).
+function AnchorPlacementEngine.followCursorKeepContent(tipFrame, ownerFrame)
+    local cfg = cursorSettingFor(tipFrame, ownerFrame)
+    if not cfg then return false end
+    -- the game's code also set an anchor type (ANCHOR_LEFT / RIGHT of the slot): the tooltip goes back to it
+    -- whenever its content is laid out again, so the tooltip jumped between the slot and the mouse (seen in a
+    -- recording 2026-11-21). Without an anchor type our points stay.
+    if type(tipFrame.SetAnchorType) == "function" then pcall(tipFrame.SetAnchorType, tipFrame, "ANCHOR_NONE") end
+    local anchorPoint, offsetX, offsetY, dirKey = TooltipEngine.ResolveCursorParams(cfg)
+    activeCursorTarget = { tip = tipFrame, point = anchorPoint, dx = offsetX, dy = offsetY, dir = dirKey }
+    AnchorPlacementEngine.refreshCursorTooltipPosition()
+    cursorDriver:Show()
+    return true
+end
+if type(ContainerFrameItemButton_CalculateItemTooltipAnchors) == "function" then
+    hooksecurefunc("ContainerFrameItemButton_CalculateItemTooltipAnchors", function(button, tipFrame)
+        if AnchorPlacementEngine.isFrameForbidden(button) then return end
+        local ok, name = pcall(button.GetName, button)
+        if not ok or type(name) ~= "string" or PlatformBridge.issecret(name) or not name:find("^EzWoWBagsSlot") then return end
+        AnchorPlacementEngine.followCursorKeepContent(tipFrame, button)
+    end)
+end
+
+hooksecurefunc(GameTooltip, "SetOwner", function(tipFrame, ownerFrame, anchorType)
     if not internalOwnerLock then
         AnchorPlacementEngine.releaseCursorTracking(tipFrame)
+        AnchorPlacementEngine.followCursorForEzWoW(tipFrame, ownerFrame, anchorType)
     end
 end)
 EventDispatcher:attachTrigger("tooltip:hide", function(_, tipFrame)
@@ -100,11 +221,11 @@ EventDispatcher:attachTrigger("tooltip:hide", function(_, tipFrame)
 end)
 
 function AnchorPlacementEngine.bindTooltipToCursor(tipFrame, ownerFrame, anchorCfg)
-    local anchorPoint, offsetX, offsetY = TooltipEngine.ResolveCursorParams(anchorCfg)
+    local anchorPoint, offsetX, offsetY, dirKey = TooltipEngine.ResolveCursorParams(anchorCfg)
     internalOwnerLock = true
     tipFrame:SetOwner(ownerFrame or UIParent, "ANCHOR_NONE")
     internalOwnerLock = false
-    activeCursorTarget = { tip = tipFrame, point = anchorPoint, dx = offsetX, dy = offsetY }
+    activeCursorTarget = { tip = tipFrame, point = anchorPoint, dx = offsetX, dy = offsetY, dir = dirKey }
     AnchorPlacementEngine.refreshCursorTooltipPosition()
     cursorDriver:Show()
 end
