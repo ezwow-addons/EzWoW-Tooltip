@@ -523,47 +523,108 @@ function DropSourceInspector.hasRecipeSpellLearned(spellID)
 end
 
 -----------------------------------------------------------------------------
+-- Lookups made from big data tables are built in the background, a few
+-- milliseconds per frame (the shared library's job runner), never inside a
+-- tooltip: the game stops a script that runs too long (in combat about 0.1 s
+-- for all addons together in one frame). Until one is ready the tooltip goes
+-- without it. from: the table it is made from (another one: built again);
+-- maxAge: seconds before it is built again.
+-----------------------------------------------------------------------------
+DropSourceInspector.built = DropSourceInspector.built or {}
+
+function DropSourceInspector.pause(weight)
+    local share = _G.EzWoW_Share
+    if type(share) == "table" and type(share.Pause) == "function" then share.Pause(weight) end
+end
+
+function DropSourceInspector.builtLookup(key, from, build, maxAge)
+    local b = DropSourceInspector.built[key]
+    if not b then
+        b = {}
+        DropSourceInspector.built[key] = b
+    end
+    local now = (GetTime and GetTime()) or 0
+    local stale = b.value == nil or b.from ~= from or (maxAge and now - (b.at or 0) > maxAge)
+    if stale and not b.busy and now >= (b.retryAt or 0) then
+        local function run()
+            local value = build(from)
+            b.value, b.from, b.at = value, from, (GetTime and GetTime()) or 0
+        end
+        local share = _G.EzWoW_Share
+        if type(share) == "table" and type(share.Background) == "function" then
+            b.busy = true
+            local taken = share.Background("EzWoW-Tooltip:" .. key, run, function(ok)
+                b.busy = false
+                if not ok then b.retryAt = ((GetTime and GetTime()) or 0) + 60 end
+            end)
+            if taken == nil then b.busy = false end
+        elseif not pcall(run) then
+            b.retryAt = now + 60
+        end
+    end
+    return b.value
+end
+
+-----------------------------------------------------------------------------
 -- Title Case English
 -----------------------------------------------------------------------------
-local dualTitleReverse
-local emfEnIndex
+local SMALL_WORDS = { a=true, an=true, the=true, of=true, ["in"]=true, on=true, to=true, ["for"]=true, ["and"]=true, by=true, with=true, from=true, at=true }
 
 function DropSourceInspector.titleCaseEnglish(s)
     if not s or s == "" then return s end
-    local small = { a=true, an=true, the=true, of=true, ["in"]=true, on=true, to=true, ["for"]=true, ["and"]=true, by=true, with=true, from=true, at=true }
     local entryIndex = 0
     return (s:gsub("([%w']+)", function(w)
         entryIndex = entryIndex + 1
         local lwVal = w:lower()
-        if entryIndex > 1 and small[lwVal] then return lwVal end
+        if entryIndex > 1 and SMALL_WORDS[lwVal] then return lwVal end
         return lwVal:sub(1, 1):upper() .. lwVal:sub(2)
     end))
 end
 
+-- Korean title -> English title (nil until built)
 function DropSourceInspector.resolveDualTitleReverse()
-    if dualTitleReverse then return dualTitleReverse end
-    dualTitleReverse = {}
-    if addon.DualNameTitleDB then
-        for enLower, koStr in pairs(addon.DualNameTitleDB) do
-            if koStr and koStr ~= "" and not dualTitleReverse[koStr] then
-                dualTitleReverse[koStr] = DropSourceInspector.titleCaseEnglish(enLower)
+    return DropSourceInspector.builtLookup("dualTitle", addon.DualNameTitleDB, function(titles)
+        local rev = {}
+        for enLower, koStr in pairs(type(titles) == "table" and titles or {}) do
+            if koStr and koStr ~= "" and not rev[koStr] then
+                rev[koStr] = DropSourceInspector.titleCaseEnglish(enLower)
             end
+            DropSourceInspector.pause()
         end
+        return rev
+    end)
+end
+
+-- English names in EzWoW - Map Finder's data: kind -> id -> name (nil until built)
+function DropSourceInspector.mapFinderEnglishNames()
+    return DropSourceInspector.builtLookup("mapFinderEnglish", _G.EzWoWMapFinderData, function(data)
+        local index = { item = {}, npc = {}, quest = {}, object = {} }
+        if type(data) ~= "table" then return index end
+        for i = 1, #data do
+            local recordItem = data[i]
+            if type(recordItem) == "table" and recordItem.id and recordItem.kind and type(recordItem.names) == "table"
+                and recordItem.names.enUS and index[recordItem.kind] then
+                index[recordItem.kind][recordItem.id] = recordItem.names.enUS
+            end
+            DropSourceInspector.pause(0.25)
+        end
+        return index
+    end)
+end
+
+function DropSourceInspector.prepareLookups()
+    local iCfg = addon.db and addon.db.item
+    if not (iCfg and iCfg.showDualName == false) then
+        DropSourceInspector.resolveDualTitleReverse()
+        if _G.EzWoWMapFinderData then DropSourceInspector.mapFinderEnglishNames() end
     end
-    return dualTitleReverse
+    if not (iCfg and iCfg.showSourceInfo == false) then DropSourceInspector.sharedQuestRewards(0) end
 end
 
 function DropSourceInspector.resolveEmfEnglishName(kind, id)
     if not id or not _G.EzWoWMapFinderData then return nil end
-    if not emfEnIndex then
-        emfEnIndex = { item = {}, npc = {}, quest = {}, object = {} }
-        for _, recordItem in ipairs(_G.EzWoWMapFinderData) do
-            if recordItem and recordItem.id and recordItem.kind and recordItem.names and recordItem.names.enUS and emfEnIndex[recordItem.kind] then
-                emfEnIndex[recordItem.kind][recordItem.id] = recordItem.names.enUS
-            end
-        end
-    end
-    return emfEnIndex[kind] and emfEnIndex[kind][id]
+    local index = DropSourceInspector.mapFinderEnglishNames()
+    return index and index[kind] and index[kind][id]
 end
 
 function DropSourceInspector.containsHangul(s)
@@ -1213,51 +1274,56 @@ end
 
 -- Quests that give an item, from what EzWoW users saw (shared records "W",
 -- this character's and received, and the shipped ones): itemID -> { questID, ... }.
--- The lookup is made again at most every 30 seconds.
-function DropSourceInspector.sharedQuestRewards(itemID)
-    local cache = DropSourceInspector.rewardIndex
-    local now = (GetTime and GetTime()) or 0
-    if not cache or now - (cache.at or 0) > 30 then
-        cache = { at = now, items = {} }
-        local function add(questID, list)
-            for _, id in ipairs(type(list) == "table" and list or {}) do
-                if type(id) == "number" then
-                    local quests = cache.items[id]
-                    if not quests then
-                        quests = {}
-                        cache.items[id] = quests
-                    end
-                    local known = false
-                    for _, q in ipairs(quests) do if q == questID then known = true end end
-                    if not known and #quests < 5 then quests[#quests + 1] = questID end
+-- The lookup is made in the background, again at most every 30 seconds
+-- (nothing until the first one is ready).
+function DropSourceInspector.buildQuestRewardIndex(seed)
+    local items = {}
+    local function add(questID, list)
+        for _, id in ipairs(type(list) == "table" and list or {}) do
+            if type(id) == "number" then
+                local quests = items[id]
+                if not quests then
+                    quests = {}
+                    items[id] = quests
                 end
+                local known = false
+                for _, q in ipairs(quests) do if q == questID then known = true end end
+                if not known and #quests < 5 then quests[#quests + 1] = questID end
             end
         end
-        local share = _G.EzWoW_Share
-        if type(share) == "table" then
-            if type(share.Store) == "function" and type(share.GetQuestRewards) == "function" then
-                local okRows, rows = pcall(share.Store, "W")
-                for questID in pairs(okRows and type(rows) == "table" and rows or {}) do
-                    if type(questID) == "number" then
-                        local okRw, rw = pcall(share.GetQuestRewards, questID)
-                        if okRw and type(rw) == "table" then
-                            add(questID, rw.r)
-                            add(questID, rw.c)
-                        end
-                    end
-                end
-            end
-            local seed = type(share.Seed) == "function" and share.Seed("rewards")
-            for questID, row in pairs(type(seed) == "table" and seed or {}) do
-                if type(questID) == "number" and type(row) == "table" then
-                    add(questID, row.r)
-                    add(questID, row.c)
-                end
-            end
-        end
-        DropSourceInspector.rewardIndex = cache
     end
-    return cache.items[itemID]
+    local share = _G.EzWoW_Share
+    if type(share) == "table" and type(share.Store) == "function" and type(share.GetQuestRewards) == "function" then
+        local okRows, rows = pcall(share.Store, "W")
+        -- (the quest numbers first: records may come in while the job waits for a frame)
+        local quests = {}
+        for questID in pairs(okRows and type(rows) == "table" and rows or {}) do
+            if type(questID) == "number" then quests[#quests + 1] = questID end
+        end
+        for _, questID in ipairs(quests) do
+            local okRw, rw = pcall(share.GetQuestRewards, questID)
+            if okRw and type(rw) == "table" then
+                add(questID, rw.r)
+                add(questID, rw.c)
+            end
+            DropSourceInspector.pause(4)
+        end
+    end
+    for questID, row in pairs(type(seed) == "table" and seed or {}) do
+        if type(questID) == "number" and type(row) == "table" then
+            add(questID, row.r)
+            add(questID, row.c)
+        end
+        DropSourceInspector.pause()
+    end
+    return items
+end
+
+function DropSourceInspector.sharedQuestRewards(itemID)
+    local share = _G.EzWoW_Share
+    local seed = type(share) == "table" and type(share.Seed) == "function" and share.Seed("rewards") or nil
+    local index = DropSourceInspector.builtLookup("questRewards", seed, DropSourceInspector.buildQuestRewardIndex, 30)
+    return index and index[itemID]
 end
 
 -- true when the shared records draw a "sold by" line for the item in this
@@ -1413,6 +1479,10 @@ end
 
 addon._zcCache = {}
 
+-- The collection line of a dungeon or zone: up to 60 items, 30 recipes and
+-- its quests to look up. Counted in the background (the first count gets a
+-- few milliseconds at once); a tooltip shows the last count meanwhile, and a
+-- count is kept 5 seconds.
 function DropSourceInspector.resolveZoneCollectionSummary(locKey)
     locKey = tonumber(locKey)
     if not locKey or locKey == 0 then return nil, nil end
@@ -1421,10 +1491,27 @@ function DropSourceInspector.resolveZoneCollectionSummary(locKey)
 
     local currentTime = GetTime and GetTime() or 0
     local cached = addon._zcCache[locKey]
-    if cached and (currentTime - cached.time) < 2.5 then
+    if cached and (currentTime - cached.time) < 5 then
         return cached.summary, cached.missing
     end
 
+    local function count()
+        local summary, missing = DropSourceInspector.countZoneCollection(locKey, rawZ)
+        addon._zcCache[locKey] = { time = (GetTime and GetTime()) or 0, summary = summary, missing = missing }
+    end
+    local share = _G.EzWoW_Share
+    if type(share) == "table" and type(share.Background) == "function" then
+        share.Background("EzWoW-Tooltip:zone:" .. locKey, count, nil, (not cached) and 4 or nil)
+    else
+        pcall(count)
+    end
+    cached = addon._zcCache[locKey]
+    if cached then return cached.summary, cached.missing end
+    return nil, nil
+end
+
+-- summary text, the missing ones text (nil, nil: nothing to show)
+function DropSourceInspector.countZoneCollection(locKey, rawZ)
     local locName = DropSourceInspector.determineLocationName(locKey)
     if not locName or locName == "" then return nil, nil end
 
@@ -1439,6 +1526,7 @@ function DropSourceInspector.resolveZoneCollectionSummary(locKey)
             local itemIDVal = tonumber(idStr)
             if itemIDVal and itemIDVal > 0 then
                 totalItems = totalItems + 1
+                DropSourceInspector.pause(8)
                 local hasCol = DropSourceInspector.verifyItemCollectionStatus(itemIDVal, nil, true)
                 if hasCol == true then
                     doneItems = doneItems + 1
@@ -1462,6 +1550,7 @@ function DropSourceInspector.resolveZoneCollectionSummary(locKey)
             local rSpellID = tonumber(rSpellStr) or 0
             if rSpellID > 0 then
                 totalRec = totalRec + 1
+                DropSourceInspector.pause(4)
                 if DropSourceInspector.hasRecipeSpellLearned(rSpellID) then
                     doneRec = doneRec + 1
                 elseif #missList < 3 then
@@ -1487,6 +1576,7 @@ function DropSourceInspector.resolveZoneCollectionSummary(locKey)
             local questIDVal = tonumber(qStr)
             if questIDVal and questIDVal > 0 then
                 totalQ = totalQ + 1
+                DropSourceInspector.pause()
                 if DropSourceInspector.hasQuestCompleted(questIDVal) then
                     doneQ = doneQ + 1
                 elseif #missList < 3 then
@@ -1518,7 +1608,6 @@ function DropSourceInspector.resolveZoneCollectionSummary(locKey)
         missing = table.concat(missList, " |cff8398A6·|r ") .. remTxt
     end
 
-    addon._zcCache[locKey] = { time = currentTime, summary = summary, missing = missing }
     return summary, missing
 end
 
@@ -1630,8 +1719,8 @@ function DropSourceInspector.useSharedModule(moduleName, m)
         -- only stands in for a missing or empty one
         local own = addon[ownName]
         if type(t) == "table" and (type(own) ~= "table" or next(own) == nil) then
+            -- (lookups made from a replaced table are built again: builtLookup)
             addon[ownName] = t
-            if ownName == "DualNameTitleDB" then dualTitleReverse = nil end
         end
     end
 end
@@ -1673,5 +1762,10 @@ pcall(DropSourceInspector.watchSharedModules)
 if EventDispatcher and EventDispatcher.attachEvent then
     EventDispatcher:attachEvent("PLAYER_LOGIN", function()
         DropSourceInspector.loadSharedData()
+        -- the lookups for item tooltips, built in the background before the
+        -- first tooltip asks for them
+        if C_Timer and C_Timer.After then
+            C_Timer.After(4, function() pcall(DropSourceInspector.prepareLookups) end)
+        end
     end)
 end

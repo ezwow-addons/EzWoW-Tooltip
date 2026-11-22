@@ -47,7 +47,7 @@ WoW Forever (`Interface: 16001`) · `/ezt`
 
 - **잡템 자동 판매**: 상점을 열면 회색 아이템을 팔고 번 금액을 채팅창에 알려 줍니다.
 - **자동 수리**: 상점을 열면 모든 장비를 수리하고 비용을 알려 줍니다.
-- **경매장 시세 저장**: 경매장을 열거나 검색할 때 최저 즉시 구매가를 모아 둡니다. 설정창의 [경매장 시세 갱신] 버튼으로 전체를 다시 수집할 수 있습니다.
+- **경매장 시세 저장**: 경매장을 열거나 검색할 때 최저 즉시 구매가를 모아 둡니다. 설정창의 [경매장 시세 갱신] 버튼으로 전체를 다시 수집할 수 있습니다. 경매장 창 오른쪽 위 바깥에 붙는 [경매장 시세 갱신] 단추가 수집 중에는 진행 막대(목록 받기 → 매물 읽기 → 아이템 정보 받기 → 완료)가 됩니다. 전체 목록은 서버가 15분에 한 번만 주므로, 그 전에는 남은 시간을 보여 주고 창을 열어 두면 시간이 되었을 때 수집합니다.
 - 상점을 열 때 **Shift**를 누르고 있으면 자동 판매 · 수리를 건너뜁니다.
 
 #### 다른 EzWoW 애드온과 함께 쓰기
@@ -161,7 +161,7 @@ EzWoW - Tooltip turns game tooltips into **clean dark cards** and adds useful in
 
 - **Auto-sell junk**: grey items are sold when you open a merchant, with the total in chat.
 - **Auto-repair**: all gear is repaired at merchants and the cost is reported.
-- **AH prices**: lowest buyouts are collected while you open or search the Auction House; the [Update AH Prices] button in settings rescans everything.
+- **AH prices**: lowest buyouts are collected while you open or search the Auction House; the [Update AH Prices] button in settings rescans everything. The [Update AH Prices] button just above the Auction House window's top right corner turns into a progress bar during a scan (getting the list, reading listings, loading item data, done). The server sends the full list once every 15 minutes; before that the button shows the time left, and with the window open the scan starts when it is up.
 - Hold **Shift** while opening a merchant to skip auto-sell and auto-repair.
 
 #### Working with other EzWoW addons

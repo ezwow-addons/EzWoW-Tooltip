@@ -64,20 +64,8 @@ end
 
 function AuctionPriceScanner.refreshAhButtonLabel()
     local actionBtn = ahScanState.btn
-    if actionBtn and actionBtn.label then
-        if ahScanState.scanning then
-            if ahScanState.total > 0 and ahScanState.index > 1 then
-                local pct = math.min(99, math.floor((ahScanState.index / ahScanState.total) * 100))
-                actionBtn.label:SetText(format(resolveExtraLocaleText("ahScanning"), pct))
-            else
-                actionBtn.label:SetText(resolveExtraLocaleText("ahScanStart"))
-            end
-        elseif ahScanState.waiting or ahScanState.awaitingLegacy or ahScanState.awaitingReplicate then
-            actionBtn.label:SetText(resolveExtraLocaleText("ahScanStart"))
-        else
-            actionBtn.label:SetText(resolveExtraLocaleText("ahScanBtn"))
-        end
-        ns.UIKit:FitFontString(actionBtn.label, 156, 1)
+    if actionBtn and actionBtn.label and AuctionPriceScanner.paintScanButton then
+        AuctionPriceScanner.paintScanButton(actionBtn)
     end
     if _G.EzWoWTooltipConfig and _G.EzWoWTooltipConfig:IsShown() and _G.EzWoWTooltipConfig.updateLabels then
         _G.EzWoWTooltipConfig.updateLabels()
@@ -223,6 +211,8 @@ function AuctionPriceScanner.finishChunkedScan()
     ahScanState.minMap = nil
     ahScanState.pendingIndices = nil
     ahScanState.retryCount = 0
+    ahScanState.stallCount = 0
+    ahScanState.doneAt, ahScanState.doneCount = GetTime and GetTime() or 0, updated
     AuctionPriceScanner.refreshAhButtonLabel()
     if updated > 0 then
         if resolveActiveLocale() == "koKR" and scannedListings > updated then
@@ -231,6 +221,19 @@ function AuctionPriceScanner.finishChunkedScan()
             AuctionPriceScanner.notifyAuctionMessage(format(resolveExtraLocaleText("ahScanDone"), updated), true)
         end
     end
+end
+
+-- Rows whose item is not in the client's cache yet have no count or price; the
+-- client loads them a few hundred at a time, so a big full scan had thousands
+-- of such rows and dropped every one still unread after 2 seconds (up to a
+-- seventh of the items, 2026-11-22). The rows are read again every half second
+-- while they keep loading, and given up after RETRY_STALLS passes in a row
+-- without any progress (or RETRY_MAX passes in all).
+local RETRY_DELAY, RETRY_STALLS, RETRY_MAX = 0.5, 6, 120
+function AuctionPriceScanner.keepRetrying(before, after)
+    if after <= 0 then return false end
+    ahScanState.stallCount = (after < before) and 0 or ((ahScanState.stallCount or 0) + 1)
+    return ahScanState.stallCount < RETRY_STALLS and (ahScanState.retryCount or 0) < RETRY_MAX
 end
 
 function AuctionPriceScanner.retryPendingAuctionEntries(session)
@@ -256,8 +259,8 @@ function AuctionPriceScanner.retryPendingAuctionEntries(session)
     end
     ahScanState.pendingIndices = stillPending
     ahScanState.retryCount = (ahScanState.retryCount or 0) + 1
-    if #stillPending > 0 and ahScanState.retryCount < 4 and C_Timer and C_Timer.After then
-        C_Timer.After(0.5, function()
+    if AuctionPriceScanner.keepRetrying(#pending, #stillPending) and C_Timer and C_Timer.After then
+        C_Timer.After(RETRY_DELAY, function()
             AuctionPriceScanner.retryPendingAuctionEntries(session)
         end)
     else
@@ -318,6 +321,7 @@ function AuctionPriceScanner.startChunkedScan(mode, totalCount)
     ahScanState.qtyMap = {}
     ahScanState.pendingIndices = {}
     ahScanState.retryCount = 0
+    ahScanState.stallCount = 0
     AuctionPriceScanner.refreshAhButtonLabel()
     ahWorkerFrame:Show()
 end
@@ -374,8 +378,101 @@ function AuctionPriceScanner.hasAuctionWindowOpen()
     return false, nil
 end
 
+-- The full list can take many seconds to arrive on a busy auction house. Its
+-- event normally starts the scan; without the event, the scan starts once the
+-- row count has stopped growing (checked every half second). The old fixed
+-- 2.5 s wait could start on part of the list, or give up and ignore the list
+-- that came later (2026-11-22).
+local REPLICATE_POLL, REPLICATE_STEADY, REPLICATE_WAIT, REPLICATE_NODATA = 0.5, 3, 60, 15
+
+-- The full list can be asked for once every 15 minutes; the server ignores a request
+-- sooner, and after a /reload (which forgot the time) the bar stood at "0" for good
+-- (2026-11-22). The time of the last request is saved; a request too soon shows when
+-- the next one can be made and, with the window still open, makes it then.
+local REPLICATE_COOLDOWN = 900
+local function serverNow() return (GetServerTime and GetServerTime()) or (time and time()) or 0 end
+function AuctionPriceScanner.lastReplicateRequest()
+    local db = type(EzWoW_TooltipDB) == "table" and EzWoW_TooltipDB or {}
+    -- saves from before the request time was kept: the end of the last full scan
+    local at = tonumber(db.auctionReplicateAt) or tonumber(db.auctionQuantityTime) or 0
+    return math.max(at, tonumber(ahScanState.lastReqTime) or 0)
+end
+function AuctionPriceScanner.replicateWaitLeft(now)
+    local left = AuctionPriceScanner.lastReplicateRequest() + REPLICATE_COOLDOWN - (now or serverNow())
+    if left > REPLICATE_COOLDOWN then left = REPLICATE_COOLDOWN end      -- a clock set back
+    return left > 0 and left or 0
+end
+function AuctionPriceScanner.clockText(seconds)
+    seconds = math.max(0, math.floor(tonumber(seconds) or 0))
+    return format("%d:%02d", math.floor(seconds / 60), seconds % 60)
+end
+function AuctionPriceScanner.waitForCooldown(session, left, isAuto)
+    ahScanState.cooldownSession = session
+    AuctionPriceScanner.refreshAhButtonLabel()
+    if not isAuto then
+        AuctionPriceScanner.notifyAuctionMessage(format(resolveExtraLocaleText("ahScanCooldown"),
+            AuctionPriceScanner.clockText(left)), false)
+    end
+    if C_Timer and C_Timer.After then
+        C_Timer.After(left + 1, function()
+            if ahScanState.isOpen and ahScanState.session == session and not ahScanState.scanning
+                and not ahScanState.awaitingReplicate and AuctionPriceScanner.replicateWaitLeft() <= 0 then
+                ahScanState.cooldownSession = nil
+                ahScanState.scannedSession = 0
+                addon:BeginAuctionHousePriceScan(true)
+            end
+        end)
+    end
+end
+function AuctionPriceScanner.replicateReady(counts)
+    local n = #counts
+    if n < REPLICATE_STEADY then return false end
+    local last = counts[n]
+    if not last or last <= 0 then return false end
+    for i = n - REPLICATE_STEADY + 1, n do
+        if counts[i] ~= last then return false end
+    end
+    return true
+end
+function AuctionPriceScanner.waitForReplicate(session)
+    if not (C_Timer and C_Timer.After) then return end
+    local counts, waited = {}, 0
+    local function poll()
+        if ahScanState.session ~= session or not ahScanState.awaitingReplicate or ahScanState.scanning then return end
+        waited = waited + REPLICATE_POLL
+        local numRep = C_AuctionHouse.GetNumReplicateItems and C_AuctionHouse.GetNumReplicateItems() or 0
+        counts[#counts + 1] = tonumber(numRep) or 0
+        if AuctionPriceScanner.replicateReady(counts) then
+            ahScanState.awaitingReplicate = false
+            AuctionPriceScanner.startChunkedScan("replicate", counts[#counts])
+        elseif waited >= REPLICATE_NODATA and counts[#counts] <= 0 then
+            -- nothing came (the server did not answer the request): say so, and keep the browse results
+            ahScanState.awaitingReplicate = false
+            ahScanState.noListAt = GetTime and GetTime() or 0
+            AuctionPriceScanner.refreshAhButtonLabel()
+            if C_AuctionHouse.SendBrowseQuery then
+                pcall(C_AuctionHouse.SendBrowseQuery, { searchString = "", sorts = {}, filters = {} })
+            end
+        elseif waited >= REPLICATE_WAIT then
+            ahScanState.awaitingReplicate = false
+            if counts[#counts] > 0 then
+                AuctionPriceScanner.startChunkedScan("replicate", counts[#counts])
+            else
+                AuctionPriceScanner.refreshAhButtonLabel()
+                if C_AuctionHouse.SendBrowseQuery then
+                    pcall(C_AuctionHouse.SendBrowseQuery, { searchString = "", sorts = {}, filters = {} })
+                end
+            end
+        else
+            C_Timer.After(REPLICATE_POLL, poll)
+        end
+    end
+    C_Timer.After(REPLICATE_POLL, poll)
+end
+
 function addon:BeginAuctionHousePriceScan(isAuto)
     if ahScanState.scanning and ahWorkerFrame:IsShown() then return end
+    if ahScanState.awaitingReplicate then AuctionPriceScanner.refreshAhButtonLabel(); return end
     if isAuto and ahScanState.scannedSession == ahScanState.session then return end
 
     local hasOpen, uiKind = AuctionPriceScanner.hasAuctionWindowOpen()
@@ -402,7 +499,6 @@ function addon:BeginAuctionHousePriceScan(isAuto)
                 if not ahScanState.waiting then
                     ahScanState.waiting = true
                     AuctionPriceScanner.refreshAhButtonLabel()
-                    AuctionPriceScanner.notifyAuctionMessage(resolveExtraLocaleText("ahScanStart"), true)
                 end
                 local session = ahScanState.session
                 if C_Timer and C_Timer.After then
@@ -416,15 +512,21 @@ function addon:BeginAuctionHousePriceScan(isAuto)
             end
 
             ahScanState.scannedSession = ahScanState.session
+            ahScanState.waiting = false
 
             local cachedTotal = C_AuctionHouse.GetNumReplicateItems() or 0
-            if currentTime - ahScanState.lastReqTime < 900 and cachedTotal > 0 then
-                AuctionPriceScanner.notifyAuctionMessage(resolveExtraLocaleText("ahScanStart"), true)
+            local waitLeft = AuctionPriceScanner.replicateWaitLeft(currentTime)
+            if waitLeft > 0 and cachedTotal > 0 then
                 AuctionPriceScanner.startChunkedScan("replicate", cachedTotal)
+                return
+            end
+            if waitLeft > 0 then
+                AuctionPriceScanner.waitForCooldown(ahScanState.session, waitLeft, isAuto)
                 return
             end
 
             ahScanState.lastReqTime = currentTime
+            if EzWoW_TooltipDB then EzWoW_TooltipDB.auctionReplicateAt = currentTime end
             ahScanState.waiting = false
             ahScanState.awaitingReplicate = true
             ahScanState.mode = "replicate"
@@ -432,26 +534,8 @@ function addon:BeginAuctionHousePriceScan(isAuto)
             ahScanState.total = 0
             ahScanState.minMap = {}
             AuctionPriceScanner.refreshAhButtonLabel()
-            AuctionPriceScanner.notifyAuctionMessage(resolveExtraLocaleText("ahScanStart"), true)
             pcall(C_AuctionHouse.ReplicateItems)
-
-            local session = ahScanState.session
-            if C_Timer and C_Timer.After then
-                C_Timer.After(2.5, function()
-                    if ahScanState.session == session and ahScanState.awaitingReplicate and not ahScanState.scanning then
-                        ahScanState.awaitingReplicate = false
-                        local numRep = C_AuctionHouse.GetNumReplicateItems and C_AuctionHouse.GetNumReplicateItems() or 0
-                        if numRep > 0 then
-                            AuctionPriceScanner.startChunkedScan("replicate", numRep)
-                        else
-                            AuctionPriceScanner.refreshAhButtonLabel()
-                            if C_AuctionHouse.SendBrowseQuery then
-                                pcall(C_AuctionHouse.SendBrowseQuery, { searchString = "", sorts = {}, filters = {} })
-                            end
-                        end
-                    end
-                end)
-            end
+            AuctionPriceScanner.waitForReplicate(ahScanState.session)
             return
         end
 
@@ -517,6 +601,78 @@ function addon:BeginAuctionHousePriceScan(isAuto)
     end
 end
 
+-- Progress of the price scan in a bar over the auction window (2026-11-22, user):
+-- the list being received (rows so far), the rows being read (read / all), rows
+-- still waiting for their item data (left), then the result for a few seconds.
+local PROGRESS_DONE_SHOW = 6
+local function bigNumber(n)
+    n = math.floor(tonumber(n) or 0)
+    if type(BreakUpLargeNumbers) == "function" then
+        local ok, text = pcall(BreakUpLargeNumbers, n)
+        if ok and type(text) == "string" then return text end
+    end
+    return tostring(n)
+end
+local function safeCount(fn, ...)
+    if type(fn) ~= "function" then return 0 end
+    local ok, a, b = pcall(fn, ...)
+    if not ok then return 0 end
+    return tonumber(b) or tonumber(a) or 0
+end
+-- fraction (0..1) and text of the scan now; nil when there is nothing to show
+function AuctionPriceScanner.progressInfo(now)
+    local s = ahScanState
+    if s.scanning and (s.total or 0) > 0 then
+        if (s.index or 1) <= s.total then
+            local read = math.max(0, (s.index or 1) - 1)
+            return read / s.total, format(resolveExtraLocaleText("ahProgRead"), bigNumber(read), bigNumber(s.total))
+        end
+        local left = s.pendingIndices and #s.pendingIndices or 0
+        return math.max(0, s.total - left) / s.total, format(resolveExtraLocaleText("ahProgItems"), bigNumber(left))
+    end
+    if s.awaitingReplicate then
+        local count = safeCount(C_AuctionHouse and C_AuctionHouse.GetNumReplicateItems)
+        return 0, format(resolveExtraLocaleText("ahProgList"), bigNumber(count))
+    end
+    if s.awaitingLegacy then
+        return 0, format(resolveExtraLocaleText("ahProgList"), bigNumber(safeCount(GetNumAuctionItems, "list")))
+    end
+    if s.waiting then return 0, resolveExtraLocaleText("ahProgWait") end
+    if s.cooldownSession and s.cooldownSession == s.session and s.isOpen then
+        local left = AuctionPriceScanner.replicateWaitLeft()
+        if left > 0 then
+            return 1 - left / REPLICATE_COOLDOWN, format(resolveExtraLocaleText("ahProgCooldown"), AuctionPriceScanner.clockText(left))
+        end
+    end
+    if s.noListAt and (now or 0) - s.noListAt < PROGRESS_DONE_SHOW then
+        return 0, resolveExtraLocaleText("ahProgNoList")
+    end
+    if s.doneAt and (s.doneCount or 0) > 0 and (now or 0) - s.doneAt < PROGRESS_DONE_SHOW then
+        return 1, format(resolveExtraLocaleText("ahProgDone"), bigNumber(s.doneCount))
+    end
+    return nil
+end
+
+-- The scan button is the progress bar (2026-11-22, user: the bar over the window
+-- and the button in the title bar, where it hid under the title art, were two
+-- places): idle it reads "update prices"; during a scan it fills and tells the step.
+local BUTTON_W, BUTTON_H = 300, 20
+function AuctionPriceScanner.paintScanButton(btn)
+    local fraction, text = AuctionPriceScanner.progressInfo(GetTime and GetTime() or 0)
+    if text then
+        fraction = math.max(0, math.min(1, fraction or 0))
+        btn.fill:SetWidth(math.max(1, (BUTTON_W - 2) * fraction))
+        btn.fill:SetShown(fraction > 0)
+        btn.label:SetTextColor(0.929, 0.957, 0.969, 1.0)
+        btn.label:SetText(text)
+    else
+        btn.fill:Hide()
+        btn.label:SetTextColor(0.682, 0.886, 0.416, 1.0)
+        btn.label:SetText(resolveExtraLocaleText("ahScanBtn"))
+    end
+    ns.UIKit:FitFontString(btn.label, BUTTON_W - 12, 1)
+end
+
 function AuctionPriceScanner.prepareAuctionScanButton()
     local parentFrame = (_G.AuctionHouseFrame and _G.AuctionHouseFrame:IsShown() and _G.AuctionHouseFrame)
         or (_G.AuctionFrame and _G.AuctionFrame:IsShown() and _G.AuctionFrame)
@@ -529,16 +685,30 @@ function AuctionPriceScanner.prepareAuctionScanButton()
         local pad = ns.GamePad
         local make = (pad and pad.MakeFrame and pad.IsActive and pad.IsActive() and pad.MakeFrame) or CreateFrame
         local actionBtn = make("Button", "EzWoWTooltipAHScanButton", parentFrame, BackdropTemplateMixin and "BackdropTemplate" or nil)
-        actionBtn:SetSize(164, 22)
+        actionBtn:SetSize(BUTTON_W, BUTTON_H)
         if actionBtn.SetBackdrop then
             ns.UIKit:ApplyBackdrop(actionBtn)
             actionBtn:SetBackdropColor(0.071, 0.094, 0.122, 0.96)
             actionBtn:SetBackdropBorderColor(0.682, 0.886, 0.416, 1.0)
         end
+        local fill = actionBtn:CreateTexture(nil, "ARTWORK")
+        fill:SetPoint("TOPLEFT", 1, -1)
+        fill:SetPoint("BOTTOMLEFT", 1, 1)
+        fill:SetColorTexture(0.682, 0.886, 0.416, 0.38)
+        fill:Hide()
+        actionBtn.fill = fill
         local lbl = actionBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         lbl:SetPoint("CENTER")
         lbl:SetTextColor(0.682, 0.886, 0.416, 1.0)
         actionBtn.label = lbl
+        if actionBtn.SetClampedToScreen then actionBtn:SetClampedToScreen(true) end
+        local since = 0
+        actionBtn:SetScript("OnUpdate", function(self, elapsed)
+            since = since + (elapsed or 0)
+            if since < 0.1 then return end
+            since = 0
+            AuctionPriceScanner.paintScanButton(self)
+        end)
 
         actionBtn:SetScript("OnEnter", function(self)
             if self.SetBackdropColor then
@@ -570,14 +740,11 @@ function AuctionPriceScanner.prepareAuctionScanButton()
     local actionBtn = ahScanState.btn
     actionBtn:SetParent(parentFrame)
     actionBtn:ClearAllPoints()
-    if parentFrame == _G.AuctionHouseFrame then
-        actionBtn:SetPoint("TOPRIGHT", parentFrame, "TOPRIGHT", -34, -3)
-    else
-        actionBtn:SetPoint("TOPRIGHT", parentFrame, "TOPRIGHT", -38, -14)
-    end
+    -- just over the auction window's top right corner, clear of its title and close button
+    actionBtn:SetPoint("BOTTOMRIGHT", parentFrame, "TOPRIGHT", 0, 2)
     actionBtn:SetFrameLevel((parentFrame:GetFrameLevel() or 1) + 10)
-    AuctionPriceScanner.refreshAhButtonLabel()
     actionBtn:Show()
+    AuctionPriceScanner.refreshAhButtonLabel()
 end
 
 local JUNK_SELL_BATCH = 10      -- items sold per tick (the server rejects large single-frame bursts)
@@ -898,6 +1065,11 @@ extraEventsFrame:SetScript("OnEvent", function(self, event, arg1)
             end
         end
     elseif event == "AUCTION_HOUSE_CLOSED" then
+        -- every row was read and only rows still loading were being retried: keep the prices read
+        if ahScanState.scanning and ahScanState.minMap and (ahScanState.total or 0) > 0
+            and (ahScanState.index or 1) > ahScanState.total then
+            AuctionPriceScanner.finishChunkedScan()
+        end
         ahScanState.isOpen = false
         ahScanState.session = ahScanState.session + 1
         ahScanState.scanning = false
@@ -923,14 +1095,18 @@ extraEventsFrame:SetScript("OnEvent", function(self, event, arg1)
             end
         end
     elseif event == "REPLICATE_ITEM_LIST_UPDATE" then
+        local grandTotal = C_AuctionHouse and C_AuctionHouse.GetNumReplicateItems and C_AuctionHouse.GetNumReplicateItems() or 0
         if ahScanState.awaitingReplicate then
-            local grandTotal = C_AuctionHouse and C_AuctionHouse.GetNumReplicateItems and C_AuctionHouse.GetNumReplicateItems() or 0
             ahScanState.awaitingReplicate = false
             if grandTotal > 0 then
                 AuctionPriceScanner.startChunkedScan("replicate", grandTotal)
             else
                 AuctionPriceScanner.refreshAhButtonLabel()
             end
+        elseif ahScanState.scanning and ahScanState.mode == "replicate" and grandTotal > (ahScanState.total or 0)
+            and (ahScanState.index or 1) <= (ahScanState.total or 0) then
+            -- more rows arrived while the scan was reading: read them as well
+            ahScanState.total = grandTotal
         end
     elseif event == "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED" or event == "AUCTION_HOUSE_BROWSE_RESULTS_ADDED" then
         AuctionPriceScanner.inspectModernBrowseResults(false)

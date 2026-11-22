@@ -333,16 +333,16 @@ local function oreKey(oreEntry)
     return key
 end
 
-local function addSpawns(spawnList, key)
+local function addSpawns(grid, spawnList, key)
     local added = false
     for _, spawn in ipairs(spawnList) do
         local cont, x, y = spawn[1], spawn[2], spawn[3]
         if type(cont) == "number" and type(x) == "number" and type(y) == "number" then
             local cell = cont .. ":" .. math.floor(x / SPAWN_CELL) .. ":" .. math.floor(y / SPAWN_CELL)
-            local list = spawnGrid[cell]
+            local list = grid[cell]
             if not list then
                 list = {}
-                spawnGrid[cell] = list
+                grid[cell] = list
             end
             list[#list + 1] = x
             list[#list + 1] = y
@@ -353,14 +353,79 @@ local function addSpawns(spawnList, key)
     return added
 end
 
--- Built once on first use; tried again at most every 30 seconds while no data
--- could be read (the shared data module only loads out of combat).
-function GatherSkill.buildSpawnGrid()
-    if spawnGrid then return true end
-    local nowTime = (type(_G.GetTime) == "function" and _G.GetTime()) or 0
-    if nowTime - spawnGridTriedAt < 30 then return false end
-    spawnGridTriedAt = nowTime
-    spawnGrid = {}
+-- the grid of every node spot (a job of the shared library's runner: a few
+-- milliseconds per frame)
+local function pause(weight)
+    local share = _G.EzWoW_Share
+    if type(share) == "table" and type(share.Pause) == "function" then share.Pause(weight) end
+end
+
+local spawnGridBusy = false
+local spawnGridRevision, spawnGridBuiltRevision = 0, -1
+
+-- New node objects use the same names as their herbs or veins. Read both
+-- name tables so their IDs need no separate list for each client language.
+-- The live records include places not yet shipped in GatherSpots.lua.
+function GatherSkill.addSharedSpawns(grid)
+    local share = _G.EzWoW_Share
+    if type(share) ~= "table" then return false end
+    local keysByName = {}
+    for itemID, entry in pairs(HERB_NODES) do
+        local key = herbKey(itemID)
+        keysByName[entry[2]], keysByName[entry[3]] = key, key
+    end
+    for _, entry in ipairs(ORE_NODES) do
+        local key = oreKey(entry)
+        keysByName[entry[2]] = key
+        if entry[3] then keysByName[entry[3]] = key end
+    end
+    local function keyForName(name)
+        if type(name) ~= "string" then return nil end
+        local key = keysByName[name]
+        if key then return key end
+        local remainder = name:match("^%S+%s+(.+)$")
+        while remainder do
+            key = keysByName[remainder]
+            if key and key:sub(1, 1) == "o" then return key end
+            remainder = remainder:match("^%S+%s+(.+)$")
+        end
+        return nil
+    end
+    local hasData = false
+    local function add(rows)
+        if type(rows) ~= "table" then return end
+        local ids = {}
+        for objectID in pairs(rows) do ids[#ids + 1] = objectID end
+        for _, objectID in ipairs(ids) do
+            local english = addon.ObjectNameDB_enUS and addon.ObjectNameDB_enUS[objectID]
+            local korean = addon.ObjectNameDB_koKR and addon.ObjectNameDB_koKR[objectID]
+            local key = keyForName(english) or keyForName(korean)
+            local spots = rows[objectID]
+            if key and type(spots) == "table" then
+                hasData = addSpawns(grid, spots, key) or hasData
+            end
+            pause()
+        end
+    end
+    if type(share.Seed) == "function" then
+        local ok, rows = pcall(share.Seed, "gather")
+        if ok then add(rows) end
+    end
+    if type(share.Data) == "function" then
+        local ok, data = pcall(share.Data)
+        if ok and type(data) == "table" then add(data.gather) end
+    end
+    return hasData
+end
+
+function GatherSkill.invalidateSpawnGrid()
+    spawnGridRevision = spawnGridRevision + 1
+    spawnGridTriedAt = -1000
+end
+
+local function makeSpawnGrid()
+    local revision = spawnGridRevision
+    local grid = {}
     local herbByEnglish, oreByEnglish = {}, {}
     for itemID, herbEntry in pairs(HERB_NODES) do herbByEnglish[herbEntry[2]] = itemID end
     for _, oreEntry in ipairs(ORE_NODES) do oreByEnglish[oreEntry[2]] = oreEntry end
@@ -380,7 +445,8 @@ function GatherSkill.buildSpawnGrid()
                     for i = 1, #flatSpots - 1, 2 do
                         spawnList[#spawnList + 1] = { continent, flatSpots[i], flatSpots[i + 1] }
                     end
-                    hasData = addSpawns(spawnList, nodeKey) or hasData
+                    hasData = addSpawns(grid, spawnList, nodeKey) or hasData
+                    pause(1 + #spawnList / 50)
                 end
             end
         end
@@ -388,20 +454,23 @@ function GatherSkill.buildSpawnGrid()
     -- plus the map addon's spots, which also hold where players gathered
     local mapData = _G.EzWoWMapFinderData
     if type(mapData) == "table" then
-        for _, entry in ipairs(mapData) do
+        for i = 1, #mapData do
+            local entry = mapData[i]
             if type(entry) == "table" and entry.kind == "object" and type(entry.spawns) == "table"
                 and type(entry.names) == "table" then
                 local englishName = entry.names.enUS
                 local herbItem = englishName and herbByEnglish[englishName]
                 local oreEntry = englishName and oreByEnglish[englishName]
                 if herbItem then
-                    hasData = addSpawns(entry.spawns, herbKey(herbItem)) or hasData
+                    hasData = addSpawns(grid, entry.spawns, herbKey(herbItem)) or hasData
                 elseif oreEntry then
-                    hasData = addSpawns(entry.spawns, oreKey(oreEntry)) or hasData
+                    hasData = addSpawns(grid, entry.spawns, oreKey(oreEntry)) or hasData
                 end
             end
+            pause(0.25)
         end
     end
+    hasData = GatherSkill.addSharedSpawns(grid) or hasData
     if not hasData then
         -- herb nodes by the herb they give, from the shared data addon
         local sharedData = _G.EzWoW_Data
@@ -413,13 +482,38 @@ function GatherSkill.buildSpawnGrid()
         if type(itemSpawns) == "table" then
             for itemID in pairs(HERB_NODES) do
                 if type(itemSpawns[itemID]) == "table" then
-                    hasData = addSpawns(itemSpawns[itemID], herbKey(itemID)) or hasData
+                    hasData = addSpawns(grid, itemSpawns[itemID], herbKey(itemID)) or hasData
                 end
+                pause()
             end
         end
     end
-    if not hasData then spawnGrid = nil end
-    return hasData
+    if hasData then
+        spawnGrid, spawnGridBuiltRevision = grid, revision
+    end
+end
+
+-- Built once on first use, in the background (never all at once inside a
+-- tooltip: the game stops a script that runs too long; tooltips go without
+-- it until it is ready). Tried again at most every 30 seconds while no data
+-- could be read (the shared data module only loads out of combat).
+function GatherSkill.buildSpawnGrid()
+    if spawnGrid and spawnGridBuiltRevision == spawnGridRevision then return true end
+    if spawnGridBusy then return spawnGrid ~= nil end
+    local nowTime = (type(_G.GetTime) == "function" and _G.GetTime()) or 0
+    if nowTime - spawnGridTriedAt < 30 then return spawnGrid ~= nil end
+    spawnGridTriedAt = nowTime
+    local share = _G.EzWoW_Share
+    if type(share) == "table" and type(share.Background) == "function" then
+        spawnGridBusy = true
+        local taken = share.Background("EzWoW-Tooltip:gatherGrid", makeSpawnGrid, function()
+            spawnGridBusy = false
+        end, not spawnGrid and 3 or nil)
+        if taken == nil then spawnGridBusy = false end
+    else
+        pcall(makeSpawnGrid)
+    end
+    return spawnGrid ~= nil
 end
 
 -- Which node kinds the minimap shows now (Find Herbs / Find Minerals); both when unknown.
@@ -810,6 +904,15 @@ function GatherSkill.onUnitTooltip(tipFrame, tooltipData)
     addon.AttributeTooltip(tipFrame)
     tipFrame:Show()
     EventDispatcher:trigger("tooltip:layout", tipFrame)
+end
+
+local share = _G.EzWoW_Share
+if type(share) == "table" and type(share.RegisterCallback) == "function" then
+    share.RegisterCallback("EzWoW-Tooltip:GatherSkill", function(kinds)
+        if type(kinds) == "table" and (kinds.gather or kinds.names) then
+            GatherSkill.invalidateSpawnGrid()
+        end
+    end)
 end
 
 compat.AddTooltipPostCall("Object", nil, GatherSkill.onObjectTooltip)
