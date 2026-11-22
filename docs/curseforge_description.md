@@ -10,6 +10,8 @@ Clean dark card tooltips for WoW Forever, with extra information on players, NPC
 
 ![Tooltip examples](https://raw.githubusercontent.com/qqhrqqhr2/EzWoW-Tooltip/master/docs/images/ui_en.png)
 
+![Full auction price scan progress bar](https://raw.githubusercontent.com/qqhrqqhr2/EzWoW-Tooltip/master/docs/images/ahscan_en.png)
+
 ![Settings window](https://raw.githubusercontent.com/qqhrqqhr2/EzWoW-Tooltip/master/docs/images/settings_en.png)
 
 *In-game screenshots with the addon set to English. The game client is Korean, so game text such as zone, item and spell names stays Korean. Character and player names and chat text are blurred.*
@@ -42,7 +44,7 @@ Clean dark card tooltips for WoW Forever, with extra information on players, NPC
 - Who cast a buff or debuff (class colour), spell ID and icon.
 
 ### Merchant
-- Auto-sell grey junk and auto-repair (hold Shift to skip), Auction House prices collected while you browse.
+- Auto-sell grey junk and auto-repair (hold Shift to skip), Auction House prices collected while you browse, and a full price scan with a progress bar at the top right of the auction window (while the server's 15-minute wait runs it shows the time left and starts by itself when it ends).
 
 ## Working with other EzWoW addons
 - **EzWoW - Bags** installed: auto-sell and auto-repair are set there; the options here turn grey. The AH price line also shows its change against the 7-day average from the Bags price history.
@@ -74,6 +76,8 @@ Languages: English, 한국어, Deutsch, Français, Español, Русский, 简
 WoW Forever용 다크 카드 스타일 툴팁입니다. 플레이어 · NPC · 아이템 · 약초와 광맥 · 주문과 오라에 정보를 더 붙여 줍니다.
 
 ![툴팁 예시](https://raw.githubusercontent.com/qqhrqqhr2/EzWoW-Tooltip/master/docs/images/ui_ko.png)
+
+![경매장 전체 시세 수집 진행 막대](https://raw.githubusercontent.com/qqhrqqhr2/EzWoW-Tooltip/master/docs/images/ahscan_ko.png)
 
 ![설정창](https://raw.githubusercontent.com/qqhrqqhr2/EzWoW-Tooltip/master/docs/images/settings_ko.png)
 
@@ -107,7 +111,7 @@ WoW Forever용 다크 카드 스타일 툴팁입니다. 플레이어 · NPC · �
 - 버프 · 디버프를 건 사람(직업 색), 주문 ID, 아이콘.
 
 ### 상점
-- 회색 잡템 자동 판매 · 자동 수리(Shift를 누르면 건너뜀), 경매장을 둘러볼 때 시세 저장.
+- 회색 잡템 자동 판매 · 자동 수리(Shift를 누르면 건너뜀), 경매장을 둘러볼 때 시세 저장, 경매장 창 오른쪽 위의 진행 막대로 보는 전체 시세 수집(서버의 15분 대기 중에는 남은 시간을 보여 주고 끝나면 바로 수집).
 
 ## 다른 EzWoW 애드온과 함께 쓰기
 - **EzWoW - Bags**가 있으면 잡템 판매 · 자동 수리는 그쪽에서 설정합니다(이 애드온의 칸은 회색). 경매장 시세 줄에는 EzWoW - Bags 시세 기록의 7일 평균 대비 등락도 붙습니다.

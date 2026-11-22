@@ -21,6 +21,8 @@ WoW Forever (`Interface: 16001`) · `/ezt`
 
 ![툴팁 예시](docs/images/ui_ko.png)
 
+![경매장 전체 시세 수집 진행 막대](docs/images/ahscan_ko.png)
+
 ![설정창](docs/images/settings_ko.png)
 
 > 실제 게임 화면입니다(WoW Forever, 한국어 클라이언트). 캐릭터 · 다른 플레이어 이름과 채팅 내용은 가렸습니다.
@@ -134,6 +136,8 @@ EzWoW - Tooltip turns game tooltips into **clean dark cards** and adds useful in
 ### Screenshots
 
 ![Tooltip examples](docs/images/ui_en.png)
+
+![Full auction price scan progress bar](docs/images/ahscan_en.png)
 
 ![Settings window](docs/images/settings_en.png)
 
