@@ -61,7 +61,14 @@ local FLIP_V = { topLeft = "bottomLeft", topCenter = "bottomCenter", topRight = 
                  bottomLeft = "topLeft", bottomCenter = "topCenter", bottomRight = "topRight" }
 local FLIP_H = { topLeft = "topRight", topRight = "topLeft", bottomLeft = "bottomRight", bottomRight = "bottomLeft" }
 
-local function fittingDirection(dir, tipFrame, posX, posY, effScale)
+-- current: the side taken for this tooltip while the mouse has not moved; it stays as long as it fits.
+-- A tooltip that changed size in its first frames (lines arriving late) jumped from one side of the
+-- mouse to the other and back (2026-11-23 dev check: 381 px with the mouse still, 98 times).
+-- A new tooltip is often drawn narrow and widens a moment later (lines arriving late); placed beside the
+-- mouse by its first width it then no longer fitted and jumped to the other side (2026-11-23 dev check:
+-- 268 px). The side for a new placement is picked for at least this width (UI units).
+local MIN_SIDE_ROOM = 340
+local function fittingDirection(dir, tipFrame, posX, posY, effScale, current)
     if not CURSOR_PRESETS[dir or ""] then return dir end
     local okW, w = pcall(tipFrame.GetWidth, tipFrame)
     local okH, h = pcall(tipFrame.GetHeight, tipFrame)
@@ -71,20 +78,27 @@ local function fittingDirection(dir, tipFrame, posX, posY, effScale)
     end
     local uiScale = UIParent:GetEffectiveScale()
     local screenW, screenH = UIParent:GetWidth() * uiScale, UIParent:GetHeight() * uiScale
+    -- (a kept side is checked by the real width; a new pick by at least MIN_SIDE_ROOM)
+    local pickW = math.max(w, MIN_SIDE_ROOM)
     w, h = w * effScale, h * effScale                      -- all in screen pixels, like the cursor
+    pickW = pickW * effScale
     local function fitsV(d)
         local y = posY + CURSOR_PRESETS[d].cy * effScale
         if d:find("^top") then return y + h <= screenH end
         return y - h >= 0
     end
-    local function fitsH(d)
+    local function fitsH(d, width)
+        width = width or w
         local x = posX + CURSOR_PRESETS[d].cx * effScale
-        if d:find("Right$") then return x + w <= screenW end
-        if d:find("Left$") then return x - w >= 0 end
-        return x - w / 2 >= 0 and x + w / 2 <= screenW
+        if d:find("Right$") then return x + width <= screenW end
+        if d:find("Left$") then return x - width >= 0 end
+        return x - width / 2 >= 0 and x + width / 2 <= screenW
+    end
+    if current and CURSOR_PRESETS[current] and fitsV(current) and fitsH(current) then
+        return current
     end
     if not fitsV(dir) and FLIP_V[dir] and fitsV(FLIP_V[dir]) then dir = FLIP_V[dir] end
-    if not fitsH(dir) and FLIP_H[dir] and fitsH(FLIP_H[dir]) then dir = FLIP_H[dir] end
+    if not fitsH(dir, pickW) and FLIP_H[dir] and fitsH(FLIP_H[dir], pickW) then dir = FLIP_H[dir] end
     return dir
 end
 
@@ -93,7 +107,10 @@ function AnchorPlacementEngine.refreshCursorTooltipPosition()
     local tipFrame = activeCursorTarget.tip
     local posX, posY = GetCursorPosition()
     local effScale = tipFrame:GetEffectiveScale()
-    local dir = fittingDirection(activeCursorTarget.dir, tipFrame, posX, posY, effScale)
+    local stillMouse = activeCursorTarget.lastX == posX and activeCursorTarget.lastY == posY
+        and activeCursorTarget.lastScale == effScale
+    local dir = fittingDirection(activeCursorTarget.dir, tipFrame, posX, posY, effScale,
+        stillMouse and activeCursorTarget.curDir or nil)
     local preset = CURSOR_PRESETS[dir or ""]
     local point = preset and preset.cp or activeCursorTarget.point
     local dx = preset and preset.cx or activeCursorTarget.dx
