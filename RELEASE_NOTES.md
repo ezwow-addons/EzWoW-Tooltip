@@ -1,7 +1,9 @@
-# v2.0.43
+# v2.0.44
 
 ### 한국어
-- 마우스를 따라다니는 툴팁이 화면 가장자리 근처에서 내용이 늘거나 줄 때 마우스 반대편으로 튀던 문제를 고쳤습니다.
+- 마우스가 잠깐(기본 0.25초) 머물러야 툴팁이 나오게 했습니다. 가방·단축바 위로 마우스를 훑을 때 툴팁을 만들지 않아 게임이 끊기지 않습니다. 설정창 "툴팁 표시 지연"에서 0~1.5초로 바꿀 수 있습니다(0 = 바로).
+- 아이템 획득처에 나오는 오브젝트 이름을 더 채웠습니다.
 
 ### English
-- Fixed mouse-following tooltips near the screen edge jumping to the other side of the cursor when their content changed size.
+- Tooltips now appear after the mouse rests for a moment (0.25 s by default), so sweeping the mouse over bags and bars no longer stutters. Change it under "Tooltip delay" in the options (0-1.5 s, 0 = at once).
+- More object names in item sources.
