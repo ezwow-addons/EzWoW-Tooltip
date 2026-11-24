@@ -689,6 +689,16 @@ LOCALES.ruRU.managedBy = "Настраивается в %s"
 LOCALES.zhCN.managedBy = "在 %s 中设置"
 LOCALES.zhTW.managedBy = "在 %s 中設定"
 
+-- Show delay: seconds the mouse rests on a thing before its tooltip shows.
+L_EN.showDelay = "Tooltip delay"
+LOCALES.koKR.showDelay = "툴팁 표시 지연"
+LOCALES.deDE.showDelay = "Tooltip-Verzögerung"
+LOCALES.frFR.showDelay = "Délai d'infobulle"
+LOCALES.esES.showDelay = "Retraso de descripción"
+LOCALES.ruRU.showDelay = "Задержка подсказки"
+LOCALES.zhCN.showDelay = "提示显示延迟"
+LOCALES.zhTW.showDelay = "提示顯示延遲"
+
 -- Equipment comparison without Shift.
 L_EN.showEquipCompare = "Compare with equipped gear without Shift"
 LOCALES.koKR.showEquipCompare = "Shift 없이 착용 장비 비교 툴팁 표시"
@@ -1628,6 +1638,16 @@ function SettingsDialog.launchConfigWindow()
         function() return addon.db.general.showGatherSkill ~= false end,
         function(entryValue) addon.db.general.showGatherSkill = entryValue end)
 
+    -- (0 to 1.5 s in tenths; 0 = at once)
+    local showDelayLabel, showDelayVal = createValueStepper(430, -360,
+        function()
+            local d = tonumber(addon.db.general.hoverDelay)
+            return d and math.floor(d * 10 + 0.5) or 0
+        end,
+        function(entryValue)
+            addon.db.general.hoverDelay = math.max(0, math.min(15, entryValue)) / 10
+        end, 0, 15, 1)
+
     
     
     local secItemHeader = createSectionDivider(20, -394, 790)
@@ -1843,6 +1863,9 @@ function SettingsDialog.launchConfigWindow()
         SettingsDialog.fitFontStringToWidth(secUnitHeader, SettingsDialog.resolveOptionsLocaleText("secUnit"), 376, 13, 10)
         SettingsDialog.fitFontStringToWidth(hpHeightLabel, SettingsDialog.resolveOptionsLocaleText("hpHeight"), 82, 12, 9)
         hpHeightVal:SetText((addon.db.general.statusbarHeight or 8) .. "px")
+        SettingsDialog.fitFontStringToWidth(showDelayLabel, SettingsDialog.resolveOptionsLocaleText("showDelay"), 82, 12, 9)
+        local delayNow = tonumber(addon.db.general.hoverDelay) or 0
+        showDelayVal:SetText(string.format("%.1f", delayNow) .. (SettingsDialog.resolveCurrentLangCode() == "koKR" and "초" or "s"))
 
         SettingsDialog.fitFontStringToWidth(secItemHeader, SettingsDialog.resolveOptionsLocaleText("secItem"), 780, 13, 10)
         local ahCount = addon.CountCachedAuctionPrices and addon:CountCachedAuctionPrices() or 0

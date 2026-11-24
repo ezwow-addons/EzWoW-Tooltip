@@ -88,7 +88,16 @@ end
 -- and the place of the tooltips stay)
 local INFO_SIGNALS = { ["tooltip:item"] = true, ["tooltip:spell"] = true, ["tooltip:unit"] = true, ["tooltip:unit:post"] = true }
 function EventDispatcher:trigger(signalName, ...)
-    if INFO_SIGNALS[signalName] and not ezTipsOn() then return end
+    if INFO_SIGNALS[signalName] then
+        if not ezTipsOn() then return end
+        -- a tooltip still waiting for its show delay keeps these until it comes up
+        -- (Modules/AnchorPosition.lua, show delay)
+        local hold = EventDispatcher.holdSignal
+        if hold then
+            local okHold, isHeld = pcall(hold, signalName, ...)
+            if okHold and isHeld then return end
+        end
+    end
     EventDispatcher.invokeSubscribers(signalSubscribers[signalName], ...)
 end
 

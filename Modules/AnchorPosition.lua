@@ -399,3 +399,162 @@ do
         if speed >= LEAVE_SPEED then pcall(closeTooltips) end
     end)
 end
+
+-----------------------------------------------------------------------------
+-- Show delay: a tooltip comes up only after the mouse has rested on a thing
+-- for general.hoverDelay seconds (2026-11-24, user: 0.25 s, every tooltip in the
+-- game). The game fills its tooltip the moment the mouse arrives; it stays
+-- invisible (alpha 0) until the delay is over, with its comparison tooltips,
+-- and this addon's lines go on only then (EventDispatcher.holdSignal). Those
+-- lines are the costly part: a piece of gear took 13 ms without them and
+-- 65-75 ms with them on the tooltip and its comparisons, so a mouse sweeping
+-- over a bag or a bar of icons dropped frame after frame.
+-- The same thing filled again (bag slots and action buttons redraw their
+-- tooltip while the mouse is on them) keeps its wait, or stays shown.
+-----------------------------------------------------------------------------
+do
+    local REFILL_GAP = 0.25        -- hidden and filled again for the same owner within this: a refill
+    local wait = nil               -- { owner = frame, since = time } while the tooltip waits
+    local shownOwner, hiddenAt = nil, 0
+    local skipOwner = nil
+    local held = {}                -- tooltip -> { { signal, count, args... }, ... } (latest per signal)
+    local driver = CreateFrame("Frame")
+    driver:Hide()
+
+    local function delayTips()
+        return GameTooltip, _G.ShoppingTooltip1, _G.ShoppingTooltip2
+    end
+    local function isDelayTip(tipFrame)
+        local a, b, c = delayTips()
+        return tipFrame ~= nil and (tipFrame == a or tipFrame == b or tipFrame == c)
+    end
+
+    -- seconds (0: tooltips show at once)
+    function TooltipEngine.ShowDelay()
+        local g = TooltipEngine.db and TooltipEngine.db.general
+        local d = g and tonumber(g.hoverDelay)
+        if not d or d <= 0 then return 0 end
+        return math.min(d, 2)
+    end
+    -- An addon that already waited for the mouse to rest (EzWoW - Utility Bar) shows the next tooltip of
+    -- this owner at once.
+    function TooltipEngine.ShowNextWithoutDelay(ownerFrame)
+        skipOwner = ownerFrame
+    end
+    -- true while the tooltip is filled but not shown yet (the dev check counts from the moment it shows)
+    function TooltipEngine.IsTooltipWaiting(tipFrame)
+        return wait ~= nil and isDelayTip(tipFrame or GameTooltip)
+    end
+
+    local function setAlpha(alpha)
+        for _, tipFrame in ipairs({ delayTips() }) do
+            if tipFrame and not AnchorPlacementEngine.isFrameForbidden(tipFrame) then
+                local okA, cur = pcall(tipFrame.GetAlpha, tipFrame)
+                if not okA or PlatformBridge.issecret(cur) or cur ~= alpha then pcall(tipFrame.SetAlpha, tipFrame, alpha) end
+            end
+        end
+    end
+
+    local function release()
+        wait = nil
+        driver:Hide()
+        setAlpha(1)
+    end
+
+    function AnchorPlacementEngine.revealWaitingTooltip()
+        if not wait then return end
+        local owner = wait.owner
+        release()
+        shownOwner = owner
+        local list = {}
+        for _, tipFrame in ipairs({ delayTips() }) do
+            if tipFrame and held[tipFrame] and tipFrame:IsShown() then list[#list + 1] = { tipFrame, held[tipFrame] } end
+        end
+        wipe(held)
+        for _, entry in ipairs(list) do
+            for _, rec in ipairs(entry[2]) do
+                pcall(EventDispatcher.trigger, EventDispatcher, rec[1], unpack(rec, 3, rec[2] + 2))
+            end
+        end
+    end
+
+    -- EventDispatcher:trigger asks here for the info signals (tooltip:item / spell / unit)
+    EventDispatcher.holdSignal = function(signalName, tipFrame, ...)
+        if not wait or not isDelayTip(tipFrame) then return false end
+        local list = held[tipFrame]
+        if not list then
+            list = {}
+            held[tipFrame] = list
+        end
+        local rec = { signalName, select("#", ...) + 1, tipFrame, ... }
+        for index, old in ipairs(list) do
+            if old[1] == signalName then
+                list[index] = rec
+                return true
+            end
+        end
+        list[#list + 1] = rec
+        return true
+    end
+
+    hooksecurefunc(GameTooltip, "SetOwner", function(tipFrame, ownerFrame)
+        if internalOwnerLock then return end
+        local delay = TooltipEngine.ShowDelay()
+        if delay <= 0 or AnchorPlacementEngine.isFrameForbidden(tipFrame) or AnchorPlacementEngine.isFrameForbidden(ownerFrame) then
+            if wait then release() end
+            return
+        end
+        if ownerFrame ~= nil and ownerFrame == skipOwner then
+            skipOwner = nil
+            if wait then release() end
+            shownOwner = ownerFrame
+            return
+        end
+        local now = GetTime()
+        local refill = ownerFrame ~= nil and (tipFrame:IsShown() or now - hiddenAt < REFILL_GAP)
+        if refill and wait and wait.owner == ownerFrame then return end      -- still waiting: same wait
+        if refill and not wait and shownOwner == ownerFrame then return end  -- already shown: stays
+        wait = { owner = ownerFrame, since = now }
+        shownOwner = nil
+        setAlpha(0)
+        driver:Show()
+    end)
+
+    for _, tipFrame in ipairs({ delayTips() }) do
+        if tipFrame then
+            -- a fill of the tooltip from the game's code may show it with full alpha
+            if type(tipFrame.Show) == "function" then
+                hooksecurefunc(tipFrame, "Show", function(self)
+                    if wait then pcall(self.SetAlpha, self, 0) end
+                end)
+            end
+            if tipFrame.HasScript and tipFrame.HookScript and tipFrame:HasScript("OnTooltipCleared") then
+                tipFrame:HookScript("OnTooltipCleared", function(self) held[self] = nil end)
+            end
+        end
+    end
+    if GameTooltip.HookScript then
+        GameTooltip:HookScript("OnHide", function()
+            hiddenAt = GetTime()
+        end)
+    end
+
+    driver:SetScript("OnUpdate", function()
+        if not wait then
+            driver:Hide()
+            return
+        end
+        if not GameTooltip:IsShown() then
+            -- gone (not a refill of the same owner): the wait ends
+            if GetTime() - hiddenAt >= REFILL_GAP then
+                release()
+                wipe(held)
+            end
+            return
+        end
+        setAlpha(0)
+        if GetTime() - wait.since >= TooltipEngine.ShowDelay() then
+            AnchorPlacementEngine.revealWaitingTooltip()
+        end
+    end)
+end

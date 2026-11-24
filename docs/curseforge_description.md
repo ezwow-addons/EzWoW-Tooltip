@@ -35,6 +35,7 @@ Clean dark card tooltips for WoW Forever, with extra information on players, NPC
 - Reagents show how many recipes use them.
 - **Compare with equipped gear without Shift** (option, off by default).
 - Tooltips close when the mouse moves quickly out of the game window (option, on by default).
+- Tooltips appear after the mouse rests for a moment (option, 0.25 s by default; 0 shows them at once). Sweeping the mouse over bags and bars no longer stutters.
 - Hover chat links to see their tooltip without clicking.
 
 ### Gathering skill
@@ -102,6 +103,7 @@ WoW Forever용 다크 카드 스타일 툴팁입니다. 플레이어 · NPC · �
 - 재료에는 그 재료를 쓰는 제조법 수를 표시합니다.
 - **Shift 없이 착용 장비 비교** (옵션, 기본 꺼짐).
 - 마우스를 빠르게 게임 창 밖으로 옮기면 툴팁이 닫힙니다 (옵션, 기본 켬).
+- 마우스가 잠깐 머물러야 툴팁이 나옵니다 (옵션, 기본 0.25초, 0이면 바로). 가방·단축바 위로 마우스를 훑어도 끊기지 않습니다.
 - 채팅창 링크에 마우스를 올리기만 해도 툴팁 표시.
 
 ### 채집 숙련도
