@@ -68,6 +68,7 @@ local ITEM_TAGS = {
     GEAR_INFO  = lineTag("00011a"),
     REC_MORE   = lineTag("00011b", true),
     BUY_PRICE  = lineTag("00011c"),
+    CRAFT_COST = lineTag("00011d"),
 }
 
 -- EzWoW-BestGearFinder's item lines (best-in-slot marks, gear sources) are
@@ -76,6 +77,9 @@ do
     local function claim()
         local bgf = _G.EzWoW_BestGearFinder
         if type(bgf) == "table" then bgf.tooltipLinesBy = "EzWoW-Tooltip" end
+        -- EzWoW-ProfessionRecipes' craft cost goes under the auction price line
+        local pr = _G.EzWoW_ProfessionRecipes
+        if type(pr) == "table" then pr.craftLinesBy = "EzWoW-Tooltip" end
     end
     claim()
     -- (it may load after this addon)
@@ -560,6 +564,17 @@ EventDispatcher:attachTrigger("tooltip:item", function(self, tip, link)
                 local extraScan = addon.EXTRA_LOCALE and addon.EXTRA_LOCALE[resolveActiveLocale()]
                 local needScanTxt = hasKo and "|cff8398A6미수집 (경매장 방문 시 자동 수집)|r" or ("|cff8398A6" .. ((extraScan and extraScan.ahNotScanned) or "Not scanned yet (open AH to collect)") .. "|r")
                 tip:AddLine(format("%s|cffA7B9C5%s:|r %s", ITEM_TAGS.AH_PRICE, resolveExtraLocaleText("auctionPrice"), needScanTxt))
+            end
+        end
+    end
+
+    -- EzWoW-ProfessionRecipes: what it costs to make, right under the auction price (its own setting)
+    if itemID and not addon:FindLine(tip, "^" .. ITEM_TAGS.CRAFT_COST) then
+        local pr = _G.EzWoW_ProfessionRecipes
+        if type(pr) == "table" and type(pr.CraftCostTooltipLine) == "function" then
+            local okCraft, craftLine = pcall(pr.CraftCostTooltipLine, tip, itemID)
+            if okCraft and type(craftLine) == "string" and craftLine ~= "" then
+                tip:AddLine(ITEM_TAGS.CRAFT_COST .. craftLine, 1, 1, 1)
             end
         end
     end
