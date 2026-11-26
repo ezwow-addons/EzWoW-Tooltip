@@ -50,6 +50,9 @@ local EQUIP_SLOTS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18
 local lastInspectReqTime = 0
 local lastInspectReqGUID = nil
 local pendingInspectTimer = false
+local pendingInspectGUID = nil
+-- how long the item level row says "loading" for a requested inspect before it gives up
+local INSPECT_WAIT = 3
 
 function UnitTacticalOverlay.determineUnitByGUID(guid)
     if not guid or issecret(guid) then return nil end
@@ -121,8 +124,10 @@ function UnitTacticalOverlay.tryRequestInspectForTooltip(unit, guid)
     elseif not pendingInspectTimer and C_Timer and C_Timer.After then
         pendingInspectTimer = true
         local targetGuid = guid
+        pendingInspectGUID = targetGuid
         C_Timer.After(0.4, function()
             pendingInspectTimer = false
+            pendingInspectGUID = nil
             if not GameTooltip:IsShown() then return end
             local unitRef = UnitTacticalOverlay.determineUnitByGUID(targetGuid)
             if unitRef and UnitExists(unitRef) and compat.CanRequestInspect(unitRef) then
@@ -132,6 +137,13 @@ function UnitTacticalOverlay.tryRequestInspectForTooltip(unit, guid)
             end
         end)
     end
+end
+
+-- An inspect of this player was asked for a moment ago (or is about to be) and its answer has not come yet
+function UnitTacticalOverlay.inspectWaiting(unit, guid)
+    if not guid or not unit or not compat.CanRequestInspect(unit) then return false end
+    if pendingInspectGUID == guid then return true end
+    return guid == lastInspectReqGUID and (GetTime() - lastInspectReqTime) < INSPECT_WAIT
 end
 
 function UnitTacticalOverlay.extractUnitItemLevel(unit, guid, isInspectReady)
@@ -437,6 +449,21 @@ function UnitTacticalOverlay.extractNpcTrackingInfo(guid)
     return aliveLine, trackLine, notableLine, zoneColLine, hasDungeonLoc, zonePending
 end
 
+-- When no inspect answer came within INSPECT_WAIT, the tooltip is drawn again so the "loading" row goes
+local giveUpGuid = nil
+function UnitTacticalOverlay.scheduleIlvlGiveUp(guid)
+    if giveUpGuid == guid or not (C_Timer and C_Timer.After) then return end
+    giveUpGuid = guid
+    C_Timer.After(INSPECT_WAIT + 0.2, function()
+        if giveUpGuid == guid then giveUpGuid = nil end
+        if not GameTooltip:IsShown() then return end
+        local _, unit = compat.GetTooltipUnit(GameTooltip)
+        if not unit or issecret(unit) or not UnitExists(unit) or nosecret(UnitGUID(unit)) ~= guid then return end
+        UnitTacticalOverlay.refreshUnitExtras(GameTooltip, unit, false)
+        pcall(GameTooltip.Show, GameTooltip)
+    end)
+end
+
 -----------------------------------------------------------------------------
 -- Refresh Unit Extras
 -----------------------------------------------------------------------------
@@ -466,6 +493,15 @@ function UnitTacticalOverlay.refreshUnitExtras(tip, unit, isInspectReady)
                 if ilvlLineText then
                     addon:InsertOrUpdateTooltipLine(tip, ILVL_PATTERN, ilvlLineText)
                 end
+            elseif not isInspectReady and UnitTacticalOverlay.inspectWaiting(unit, guid) then
+                -- the inspect answer comes a moment later: the row is kept for it (2026-11-26, the tooltip
+                -- grew by a row about 0.1 s after it came up)
+                addon:InsertOrUpdateTooltipLine(tip, ILVL_PATTERN, format("%s|cffA7B9C5%s:|r |cff8398A6%s|r",
+                    ILVL_PREFIX_TAG, resolveExtraLocaleText("ilvl"), resolveExtraLocaleText("zcLoading")))
+                UnitTacticalOverlay.scheduleIlvlGiveUp(guid)
+            else
+                -- no answer came (out of range, or the request was not sent): no row left saying "loading"
+                addon:StripMatchingTooltipLine(tip, ILVL_PATTERN)
             end
         else
             addon:StripMatchingTooltipLine(tip, ILVL_PATTERN)
