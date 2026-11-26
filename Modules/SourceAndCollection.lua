@@ -1483,6 +1483,39 @@ addon._zcCache = {}
 -- its quests to look up. Counted in the background (the first count gets a
 -- few milliseconds at once); a tooltip shows the last count meanwhile, and a
 -- count is kept 5 seconds.
+-- Until the first count of a place is done its row says "loading", and the
+-- row is filled in where it is when the count ends (2026-11-26, user: a line
+-- that came a moment later pushed the rows below it down, like a flicker).
+local ZONE_TAG = compat.LineTag("000115")
+local zoneLoading = setmetatable({}, { __mode = "k" })   -- tooltip -> { loc = place, label = text }
+
+function DropSourceInspector.zoneLineText(label, body)
+    return ZONE_TAG .. format("|cffA7B9C5%s:|r %s", label, body)
+end
+
+-- the "loading" row of a place on this tooltip (filled in by fillZoneLines)
+function DropSourceInspector.zoneLoadingLine(tip, locKey, label)
+    if tip then zoneLoading[tip] = { loc = locKey, label = label } end
+    return DropSourceInspector.zoneLineText(label, "|cff8398A6" .. resolveExtraLocaleText("zcLoading") .. "|r")
+end
+
+function DropSourceInspector.fillZoneLines(locKey)
+    local cached = addon._zcCache[locKey]
+    local loadingText = resolveExtraLocaleText("zcLoading")
+    for tip, w in pairs(zoneLoading) do
+        if w.loc == locKey then
+            zoneLoading[tip] = nil
+            local okShown, shown = pcall(tip.IsShown, tip)
+            local region = okShown and shown and addon:FindLine(tip, "^" .. ZONE_TAG)
+            local text = region and nosecret(region:GetText())
+            if type(text) == "string" and text:find(loadingText, 1, true) then
+                region:SetText(DropSourceInspector.zoneLineText(w.label, (cached and cached.summary) or "|cff8398A6-|r"))
+                pcall(tip.Show, tip)
+            end
+        end
+    end
+end
+
 function DropSourceInspector.resolveZoneCollectionSummary(locKey)
     locKey = tonumber(locKey)
     if not locKey or locKey == 0 then return nil, nil end
@@ -1500,13 +1533,18 @@ function DropSourceInspector.resolveZoneCollectionSummary(locKey)
         addon._zcCache[locKey] = { time = (GetTime and GetTime()) or 0, summary = summary, missing = missing }
     end
     local share = _G.EzWoW_Share
+    local jobKey = "EzWoW-Tooltip:zone:" .. locKey
     if type(share) == "table" and type(share.Background) == "function" then
-        share.Background("EzWoW-Tooltip:zone:" .. locKey, count, nil, (not cached) and 4 or nil)
+        share.Background(jobKey, count, function() DropSourceInspector.fillZoneLines(locKey) end, (not cached) and 4 or nil)
     else
         pcall(count)
     end
     cached = addon._zcCache[locKey]
     if cached then return cached.summary, cached.missing end
+    -- the first count is still running (third value: show the "loading" row)
+    if type(share) == "table" and type(share.BackgroundBusy) == "function" and share.BackgroundBusy(jobKey) then
+        return nil, nil, true
+    end
     return nil, nil
 end
 
@@ -1650,6 +1688,7 @@ addon.FormatItemSources = DropSourceInspector.composeItemSources
 addon.QueryItemCountSafe = queryItemCountAPI
 addon.FormatDurationShort = DropSourceInspector.composeDurationShort
 addon.GetZoneCollectionSummary = DropSourceInspector.resolveZoneCollectionSummary
+addon.ZoneLoadingLine = DropSourceInspector.zoneLoadingLine
 
 -- Names for the shared "drops from" records (creatures and objects), in the
 -- player's language, from this addon's name tables.

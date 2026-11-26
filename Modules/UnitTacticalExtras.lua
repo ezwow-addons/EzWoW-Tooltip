@@ -326,7 +326,7 @@ function UnitTacticalOverlay.extractNpcTrackingInfo(guid)
         return nil, nil, nil, nil, nil
     end
     local npcID = tonumber(npcIDStr)
-    local aliveLine, trackLine, notableLine, zoneColLine, hasDungeonLoc
+    local aliveLine, trackLine, notableLine, zoneColLine, hasDungeonLoc, zonePending
 
     local aliveParts = {}
     if spawnUID and #spawnUID >= 5 and GetServerTime and bit and bit.band then
@@ -429,10 +429,12 @@ function UnitTacticalOverlay.extractNpcTrackingInfo(guid)
     end
     if npcLocKey and npcLocKey ~= 0 and (npcLocKey < 0 or trackLine) then
         hasDungeonLoc = (npcLocKey < 0)
-        zoneColLine = resolveZoneCollectionSummary(npcLocKey)
+        local _
+        zoneColLine, _, zonePending = resolveZoneCollectionSummary(npcLocKey)
+        if zonePending then zonePending = npcLocKey end
     end
 
-    return aliveLine, trackLine, notableLine, zoneColLine, hasDungeonLoc
+    return aliveLine, trackLine, notableLine, zoneColLine, hasDungeonLoc, zonePending
 end
 
 -----------------------------------------------------------------------------
@@ -500,7 +502,7 @@ function UnitTacticalOverlay.refreshUnitExtras(tip, unit, isInspectReady)
         end
 
         if not nCfg or nCfg.showNpcTracking ~= false then
-            local aliveLine, trackLine, notableLine, zoneColLine, hasDungeonLoc = UnitTacticalOverlay.extractNpcTrackingInfo(guid)
+            local aliveLine, trackLine, notableLine, zoneColLine, hasDungeonLoc, zonePending = UnitTacticalOverlay.extractNpcTrackingInfo(guid)
             if aliveLine then
                 addon:InsertOrUpdateTooltipLine(tip, NPC_ALIVE_PATTERN,
                     format("%s|cffA7B9C5%s:|r %s", NPC_ALIVE_TAG, resolveExtraLocaleText("npcAlive"), aliveLine))
@@ -523,6 +525,11 @@ function UnitTacticalOverlay.refreshUnitExtras(tip, unit, isInspectReady)
                 local zLabel = hasDungeonLoc and resolveExtraLocaleText("instCollect") or resolveExtraLocaleText("zoneCollect")
                 addon:InsertOrUpdateTooltipLine(tip, "^" .. compat.LineTag("000115"),
                     compat.LineTag("000115") .. format("|cffA7B9C5%s:|r %s", zLabel, zoneColLine))
+            elseif zonePending and addon.ZoneLoadingLine then
+                -- counted a moment later: the row is kept for it
+                local zLabel = hasDungeonLoc and resolveExtraLocaleText("instCollect") or resolveExtraLocaleText("zoneCollect")
+                addon:InsertOrUpdateTooltipLine(tip, "^" .. compat.LineTag("000115"),
+                    addon.ZoneLoadingLine(tip, zonePending, zLabel))
             else
                 addon:StripMatchingTooltipLine(tip, "^" .. compat.LineTag("000115"))
             end

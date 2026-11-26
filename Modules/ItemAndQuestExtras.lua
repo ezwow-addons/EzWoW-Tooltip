@@ -435,10 +435,13 @@ EventDispatcher:attachTrigger("tooltip:item", function(self, tip, link)
             
             -- the dungeon's collection line (Shift only opens the "+N more" lists)
             if primaryLocKey and primaryLocKey < 0 and not addon:FindLine(tip, "^" .. ITEM_TAGS.ZONE_COL) then
-                local zSummary, zMissing = resolveZoneCollectionSummary(primaryLocKey)
+                local zSummary, _, zPending = resolveZoneCollectionSummary(primaryLocKey)
+                local zLabel = (primaryLocKey < 0) and resolveExtraLocaleText("instCollect") or resolveExtraLocaleText("zoneCollect")
                 if zSummary then
-                    local zLabel = (primaryLocKey < 0) and resolveExtraLocaleText("instCollect") or resolveExtraLocaleText("zoneCollect")
                     tip:AddLine(format("%s|cffA7B9C5%s:|r %s", ITEM_TAGS.ZONE_COL, zLabel, zSummary))
+                elseif zPending and addon.ZoneLoadingLine then
+                    -- counted a moment later: the row is kept for it
+                    tip:AddLine(addon.ZoneLoadingLine(tip, primaryLocKey, zLabel))
                 end
             end
         end

@@ -411,10 +411,17 @@ end
 -- over a bag or a bar of icons dropped frame after frame.
 -- The same thing filled again (bag slots and action buttons redraw their
 -- tooltip while the mouse is on them) keeps its wait, or stays shown.
+-- Such a tooltip comes up with its lines where its next fill puts them
+-- (2026-11-26, user video: held lines went below the comparison's stat
+-- changes and the Bags lines, then the game's next fill 0.2 s later put them
+-- back above those; the rows swapped every time a tooltip came up): the fill
+-- nearest to the end of the wait adds them, and the tooltip comes up after it.
 -----------------------------------------------------------------------------
 do
     local REFILL_GAP = 0.25        -- hidden and filled again for the same owner within this: a refill
-    local wait = nil               -- { owner = frame, since = time } while the tooltip waits
+    local OPEN_BEFORE = 0.1        -- a refill this close to the end of the wait takes this addon's lines
+    local LATE_FILL = 0.25         -- longest extra wait for that refill (the game refills every 0.2 s)
+    local wait = nil               -- { owner, since, refills, open } while the tooltip waits
     local shownOwner, hiddenAt = nil, 0
     local skipOwner = nil
     local held = {}                -- tooltip -> { { signal, count, args... }, ... } (latest per signal)
@@ -461,6 +468,21 @@ do
         setAlpha(1)
     end
 
+    -- the game fills this owner's tooltip again while it is shown (owner:UpdateTooltip, every 0.2 s)
+    local function ownerRefills(ownerFrame)
+        if type(ownerFrame) ~= "table" then return false end
+        local ok, fn = pcall(function() return ownerFrame.UpdateTooltip end)
+        return ok and type(fn) == "function"
+    end
+
+    -- lines still held from a fill that was not refilled since the hold ended
+    local function heldLeft()
+        for _, tipFrame in ipairs({ delayTips() }) do
+            if tipFrame and held[tipFrame] and tipFrame:IsShown() then return true end
+        end
+        return false
+    end
+
     function AnchorPlacementEngine.revealWaitingTooltip()
         if not wait then return end
         local owner = wait.owner
@@ -481,6 +503,11 @@ do
     -- EventDispatcher:trigger asks here for the info signals (tooltip:item / spell / unit)
     EventDispatcher.holdSignal = function(signalName, tipFrame, ...)
         if not wait or not isDelayTip(tipFrame) then return false end
+        if wait.open then
+            -- the lines go on with this fill: what an earlier fill held is not added again
+            held[tipFrame] = nil
+            return false
+        end
         local list = held[tipFrame]
         if not list then
             list = {}
@@ -512,21 +539,36 @@ do
         end
         local now = GetTime()
         local refill = ownerFrame ~= nil and (tipFrame:IsShown() or now - hiddenAt < REFILL_GAP)
-        if refill and wait and wait.owner == ownerFrame then return end      -- still waiting: same wait
+        if refill and wait and wait.owner == ownerFrame then                 -- still waiting: same wait
+            wait.refills = true
+            -- this fill is near the end of the wait: it adds the lines in their place
+            if now - wait.since >= delay - OPEN_BEFORE then wait.open = true end
+            return
+        end
         if refill and not wait and shownOwner == ownerFrame then return end  -- already shown: stays
-        wait = { owner = ownerFrame, since = now }
+        wait = { owner = ownerFrame, since = now, refills = ownerRefills(ownerFrame) }
+        -- a short wait: already the first fill adds the lines
+        if wait.refills and delay <= OPEN_BEFORE then wait.open = true end
         shownOwner = nil
         setAlpha(0)
         driver:Show()
     end)
 
+    -- while the tooltip waits, every way the game shows a tooltip or gives it an owner keeps it at alpha 0
+    -- (2026-11-26, user video: the comparison tooltips are given an owner and shown with SetShown at each
+    -- fill, so the equipped item's tooltip came up alone before the wait was over, went away and came back
+    -- before the item's own tooltip)
+    local function keepHidden(self)
+        if wait then pcall(self.SetAlpha, self, 0) end
+    end
     for _, tipFrame in ipairs({ delayTips() }) do
         if tipFrame then
             -- a fill of the tooltip from the game's code may show it with full alpha
-            if type(tipFrame.Show) == "function" then
-                hooksecurefunc(tipFrame, "Show", function(self)
-                    if wait then pcall(self.SetAlpha, self, 0) end
-                end)
+            for _, method in ipairs({ "Show", "SetShown", "SetOwner" }) do
+                if type(tipFrame[method]) == "function" then hooksecurefunc(tipFrame, method, keepHidden) end
+            end
+            if tipFrame.HasScript and tipFrame.HookScript and tipFrame:HasScript("OnShow") then
+                tipFrame:HookScript("OnShow", keepHidden)
             end
             if tipFrame.HasScript and tipFrame.HookScript and tipFrame:HasScript("OnTooltipCleared") then
                 tipFrame:HookScript("OnTooltipCleared", function(self) held[self] = nil end)
@@ -553,7 +595,11 @@ do
             return
         end
         setAlpha(0)
-        if GetTime() - wait.since >= TooltipEngine.ShowDelay() then
+        local waited, delay = GetTime() - wait.since, TooltipEngine.ShowDelay()
+        if waited >= delay then
+            -- a tooltip the game fills again waits for that fill (held lines would go below the rows
+            -- the game and other addons add after them, and move back up at its next fill)
+            if wait.refills and heldLeft() and waited < delay + LATE_FILL then return end
             AnchorPlacementEngine.revealWaitingTooltip()
         end
     end)
