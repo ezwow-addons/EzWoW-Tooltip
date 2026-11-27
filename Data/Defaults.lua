@@ -41,7 +41,7 @@ addon.db = {
         alwaysShowIdInfo  = true,
         fadeOut           = false,
         closeOnWindowLeave = true,     -- close tooltips when the mouse leaves the game window
-        hoverDelay        = 0.25,      -- seconds the mouse rests on a thing before its tooltip shows (0 = at once)
+        hoverDelay        = 0.1,       -- seconds the mouse rests on a thing before its tooltip shows (0 = at once)
         skinMoreFrames    = true,
         hideIssueReport   = true,       -- runs only while EzWoW-ErrorCatcher is not loaded
         showGatherSkill   = true,

@@ -83,7 +83,7 @@ WoW Forever (`Interface: 16001`) · `/ezt`
 | ④ | 죽은 대상 회색 표시 · 체력 수치 표시 | 끔 · 켬 |
 | ④ | 이슈 리포터 창 · F6 제보 문구 숨김 (EzWoW - Error Catcher가 있으면 그쪽에서 설정) | 켬 |
 | ④ | 체력바 높이 0~16px · 채집 필요 숙련도 표시 | 8px · 켬 |
-| ④ | 툴팁 표시 지연 0~1.5초: 마우스가 이만큼 머물러야 툴팁이 나옵니다. 스쳐 지나갈 때는 EzWoW 줄을 만들지 않아 끊김이 줄어듭니다 (0 = 바로) | 0.25초 |
+| ④ | 툴팁 표시 지연 0~1.5초: 마우스가 이만큼 머물러야 툴팁이 나옵니다. 스쳐 지나갈 때는 EzWoW 줄을 만들지 않아 끊김이 줄어듭니다 (0 = 바로) | 0.1초 |
 | ⑤ | 아이템 · 퀘스트 획득처 · 수집 상태 · 보유 수량(가방/은행) · 최대 겹침 · 상점 가격(판매 · 구입) | 켬 |
 | ⑤ | 아이템 품질색 테두리 · 퀘스트 난이도색 테두리 · 아이템 · 주문 아이콘 · 버프 · 디버프 시전자 | 켬 |
 | ⑤ | ID 항상 표시 (끄면 Shift/Alt를 누를 때만) | 켬 |
@@ -200,7 +200,7 @@ So that nothing shows twice, these addons take over the matching feature when th
 | ④ | Gray out dead units · Show health numbers | Off · On |
 | ④ | Hide Issue Reporter & F6 bug hint (set in EzWoW - Error Catcher when it is installed) | On |
 | ④ | HP bar height 0–16 px · Show gathering skill needed | 8 px · On |
-| ④ | Tooltip delay 0–1.5 s: a tooltip appears only after the mouse rests this long; nothing extra is built while the mouse sweeps past, so it stutters less (0 = at once) | 0.25 s |
+| ④ | Tooltip delay 0–1.5 s: a tooltip appears only after the mouse rests this long; nothing extra is built while the mouse sweeps past, so it stutters less (0 = at once) | 0.1 s |
 | ⑤ | Item & quest source · Collection status · Owned count (Bag/Bank) · Max stack & vendor prices (sell · buy) | On |
 | ⑤ | Item quality border · Quest difficulty border · Item & spell icons · Buff & debuff caster | On |
 | ⑤ | Always show IDs (off: only with Shift/Alt) | On |

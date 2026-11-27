@@ -328,256 +328,266 @@ EventDispatcher:attachTrigger("tooltip:item", function(self, tip, link)
 
     appendDualNameToTitle(tip, "item", itemID)
     local linesBefore = tip:NumLines() or 0
-
-    local containsBagCount, containsSellPrice, containsUsedIn, containsItemLevel = ItemQuestEnricher.inspectExistingItemTooltipState(tip)
     local hasShift = IsShiftKeyDown()
-    local statusText
-    local ownedBagCount = 0
+    -- The same thing filled again (bag slots and bar buttons fill their tooltip every 0.2 s while the
+    -- mouse rests on them) gets the lines of its last fill for a moment instead of all of them worked
+    -- out again (Core/Base.lua FillLines). Key: the item, Shift and the stack under the mouse.
+    local fillKey = link .. "|" .. (hasShift and "1" or "0") .. "|"
+        .. tostring(ItemQuestEnricher.resolveHoveredSlotStackCount(nil) or 1)
+    local fillLines = addon.FillLines or function(_, _, compute) compute() end
+    fillLines(tip, fillKey, function()
+        local final = true   -- false: a row still loading, worked out again next time
+        local containsBagCount, containsSellPrice, containsUsedIn, containsItemLevel = ItemQuestEnricher.inspectExistingItemTooltipState(tip)
+        local statusText
+        local ownedBagCount = 0
 
-    if not containsItemLevel and (not iCfg or iCfg.showItemDetails ~= false) then
-        if not addon:FindLine(tip, "^" .. ITEM_TAGS.ITEM_ILVL) then
-            local itemIlvl = ItemQuestEnricher.extractItemTooltipLevel(itemID, link)
-            if itemIlvl then
-                tip:AddLine(format("%s|cffA7B9C5%s:|r |cffFFD100%d|r", ITEM_TAGS.ITEM_ILVL, resolveExtraLocaleText("ilvl"), itemIlvl))
+        if not containsItemLevel and (not iCfg or iCfg.showItemDetails ~= false) then
+            if not addon:FindLine(tip, "^" .. ITEM_TAGS.ITEM_ILVL) then
+                local itemIlvl = ItemQuestEnricher.extractItemTooltipLevel(itemID, link)
+                if itemIlvl then
+                    tip:AddLine(format("%s|cffA7B9C5%s:|r |cffFFD100%d|r", ITEM_TAGS.ITEM_ILVL, resolveExtraLocaleText("ilvl"), itemIlvl))
+                end
             end
         end
-    end
 
-    if itemID and (not iCfg or iCfg.showCollectionStatus ~= false) then
-        if not addon:FindLine(tip, "^" .. ITEM_TAGS.COLLECT) then
-            _, statusText = verifyItemCollectionStatus(itemID, link, false)
-            -- a recipe item's learned state is already shown by EzWoW-ProfessionRecipes
-            if statusText and addon.RecipeItemDB and addon.RecipeItemDB[itemID]
-                and ItemQuestEnricher.professionRecipesCovers("recipe", tip, itemID) then
-                statusText = nil
-            end
-            if statusText then
-                tip:AddLine(format("%s|cffA7B9C5%s:|r %s", ITEM_TAGS.COLLECT, resolveExtraLocaleText("collection"), statusText))
+        if itemID and (not iCfg or iCfg.showCollectionStatus ~= false) then
+            if not addon:FindLine(tip, "^" .. ITEM_TAGS.COLLECT) then
+                _, statusText = verifyItemCollectionStatus(itemID, link, false)
+                -- a recipe item's learned state is already shown by EzWoW-ProfessionRecipes
+                if statusText and addon.RecipeItemDB and addon.RecipeItemDB[itemID]
+                    and ItemQuestEnricher.professionRecipesCovers("recipe", tip, itemID) then
+                    statusText = nil
+                end
+                if statusText then
+                    tip:AddLine(format("%s|cffA7B9C5%s:|r %s", ITEM_TAGS.COLLECT, resolveExtraLocaleText("collection"), statusText))
+                end
             end
         end
-    end
 
-    -- shops and drops seen in the game (shared records)
-    if itemID and not addon:FindLine(tip, "^" .. ITEM_TAGS.SEEN_SRC) then
-        local share = _G.EzWoW_Share
-        if type(share) == "table" and type(share.ItemSourceLines) == "function" then
-            local okLines, lines = pcall(share.ItemSourceLines, itemID)
-            -- EzWoW-BestGearFinder lists where this gear comes from: no second list
-            local okBgf, bgfSources = pcall(ItemQuestEnricher.bestGearCoversSource, tip, itemID)
-            bgfSources = okBgf and bgfSources
-            for index, row in ipairs(okLines and type(lines) == "table" and lines or {}) do
-                if bgfSources then row = nil end
-                if type(row) == "table" and type(row[1]) == "string" and type(row[2]) == "string" then
-                    tip:AddLine(format("%s|cffA7B9C5%s:|r |cffEDF4F7%s|r", ITEM_TAGS.SEEN_SRC, row[1], row[2]))
-                    -- an opened list (Shift) goes down under it
-                    for _, line in ipairs(type(row[3]) == "table" and row[3] or {}) do
-                        if type(line) == "string" then
-                            tip:AddLine(ITEM_TAGS.REC_MORE .. "    |cffEDF4F7" .. line .. "|r")
+        -- shops and drops seen in the game (shared records)
+        if itemID and not addon:FindLine(tip, "^" .. ITEM_TAGS.SEEN_SRC) then
+            local share = _G.EzWoW_Share
+            if type(share) == "table" and type(share.ItemSourceLines) == "function" then
+                local okLines, lines = pcall(share.ItemSourceLines, itemID)
+                -- EzWoW-BestGearFinder lists where this gear comes from: no second list
+                local okBgf, bgfSources = pcall(ItemQuestEnricher.bestGearCoversSource, tip, itemID)
+                bgfSources = okBgf and bgfSources
+                for index, row in ipairs(okLines and type(lines) == "table" and lines or {}) do
+                    if bgfSources then row = nil end
+                    if type(row) == "table" and type(row[1]) == "string" and type(row[2]) == "string" then
+                        tip:AddLine(format("%s|cffA7B9C5%s:|r |cffEDF4F7%s|r", ITEM_TAGS.SEEN_SRC, row[1], row[2]))
+                        -- an opened list (Shift) goes down under it
+                        for _, line in ipairs(type(row[3]) == "table" and row[3] or {}) do
+                            if type(line) == "string" then
+                                tip:AddLine(ITEM_TAGS.REC_MORE .. "    |cffEDF4F7" .. line .. "|r")
+                            end
                         end
                     end
                 end
             end
         end
-    end
 
-    -- EzWoW-BestGearFinder: best-in-slot marks, and where gear comes from when
-    -- this addon knows no source for it
-    if itemID and not addon:FindLine(tip, "^" .. ITEM_TAGS.GEAR_INFO) then
-        local bgf = _G.EzWoW_BestGearFinder
-        if type(bgf) == "table" and type(bgf.ItemTooltipLines) == "function" then
-            local okGear, gearLines = pcall(bgf.ItemTooltipLines, bgf, tip, itemID)
-            for _, row in ipairs(okGear and type(gearLines) == "table" and gearLines or {}) do
-                if type(row) == "table" and type(row[1]) == "string" then
-                    -- (no wrap: on this client a wrapped tooltip line can end up cut with "...";
-                    -- the rows already come split into short lines)
-                    tip:AddLine(ITEM_TAGS.GEAR_INFO .. row[1], tonumber(row[2]) or 1, tonumber(row[3]) or 1, tonumber(row[4]) or 1)
+        -- EzWoW-BestGearFinder: best-in-slot marks, and where gear comes from when
+        -- this addon knows no source for it
+        if itemID and not addon:FindLine(tip, "^" .. ITEM_TAGS.GEAR_INFO) then
+            local bgf = _G.EzWoW_BestGearFinder
+            if type(bgf) == "table" and type(bgf.ItemTooltipLines) == "function" then
+                local okGear, gearLines = pcall(bgf.ItemTooltipLines, bgf, tip, itemID)
+                for _, row in ipairs(okGear and type(gearLines) == "table" and gearLines or {}) do
+                    if type(row) == "table" and type(row[1]) == "string" then
+                        -- (no wrap: on this client a wrapped tooltip line can end up cut with "...";
+                        -- the rows already come split into short lines)
+                        tip:AddLine(ITEM_TAGS.GEAR_INFO .. row[1], tonumber(row[2]) or 1, tonumber(row[3]) or 1, tonumber(row[4]) or 1)
+                    end
                 end
             end
         end
-    end
 
-    if itemID and (not iCfg or iCfg.showSourceInfo ~= false) then
-        if not addon:FindLine(tip, "^" .. ITEM_TAGS.SOURCE1) then
-            local sources, recipeSrcLine, reagLine, primaryLocKey = composeItemSources(itemID, link)
-            local bgfSources, bgfCraft = ItemQuestEnricher.bestGearCoversSource(tip, itemID)
-            if bgfSources then sources = {} end
-            if bgfCraft then recipeSrcLine, reagLine = nil, nil end
-            if sources[1] then
-                tip:AddLine(format("%s|cffA7B9C5%s:|r %s", ITEM_TAGS.SOURCE1, resolveExtraLocaleText("source"), sources[1]))
-            end
-            if sources[2] and not addon:FindLine(tip, "^" .. ITEM_TAGS.SOURCE2) then
-                tip:AddLine(format("%s|cff8398A6%s:|r %s", ITEM_TAGS.SOURCE2, resolveExtraLocaleText("source2"), sources[2]))
-            end
-            if recipeSrcLine and not addon:FindLine(tip, "^" .. ITEM_TAGS.REC_SRC) then
-                addRecipeSourceLines(tip, recipeSrcLine)
-            end
-            if reagLine and not addon:FindLine(tip, "^" .. ITEM_TAGS.REAGENTS) then
-                tip:AddLine(format("%s|cff8398A6%s:|r %s", ITEM_TAGS.REAGENTS, resolveExtraLocaleText("reagents"), reagLine))
-            end
-            local rawTokRwd = addon.TokenRewardDB and addon.TokenRewardDB[itemID]
-            if rawTokRwd and rawTokRwd ~= "" and not addon:FindLine(tip, "^" .. ITEM_TAGS.TOKEN_RWD) then
-                local rwdParts = {}
-                local rwdTotal = 0
-                local rwdMax = hasShift and 8 or 4
-                for rStr in rawTokRwd:gmatch("([^,]+)") do
-                    local rid = tonumber(rStr)
-                    if rid and rid > 0 then
-                        rwdTotal = rwdTotal + 1
-                        if #rwdParts < rwdMax then
-                            local rName = determineReagentName(rid)
-                            local hasCol = verifyItemCollectionStatus(rid, nil, true)
-                            local colMark = hasCol and (" " .. compat.CheckIcon()) or ""
-                            rwdParts[#rwdParts + 1] = format("|cffEDF4F7%s|r%s", rName, colMark)
+        if itemID and (not iCfg or iCfg.showSourceInfo ~= false) then
+            if not addon:FindLine(tip, "^" .. ITEM_TAGS.SOURCE1) then
+                local sources, recipeSrcLine, reagLine, primaryLocKey = composeItemSources(itemID, link)
+                local bgfSources, bgfCraft = ItemQuestEnricher.bestGearCoversSource(tip, itemID)
+                if bgfSources then sources = {} end
+                if bgfCraft then recipeSrcLine, reagLine = nil, nil end
+                if sources[1] then
+                    tip:AddLine(format("%s|cffA7B9C5%s:|r %s", ITEM_TAGS.SOURCE1, resolveExtraLocaleText("source"), sources[1]))
+                end
+                if sources[2] and not addon:FindLine(tip, "^" .. ITEM_TAGS.SOURCE2) then
+                    tip:AddLine(format("%s|cff8398A6%s:|r %s", ITEM_TAGS.SOURCE2, resolveExtraLocaleText("source2"), sources[2]))
+                end
+                if recipeSrcLine and not addon:FindLine(tip, "^" .. ITEM_TAGS.REC_SRC) then
+                    addRecipeSourceLines(tip, recipeSrcLine)
+                end
+                if reagLine and not addon:FindLine(tip, "^" .. ITEM_TAGS.REAGENTS) then
+                    tip:AddLine(format("%s|cff8398A6%s:|r %s", ITEM_TAGS.REAGENTS, resolveExtraLocaleText("reagents"), reagLine))
+                end
+                local rawTokRwd = addon.TokenRewardDB and addon.TokenRewardDB[itemID]
+                if rawTokRwd and rawTokRwd ~= "" and not addon:FindLine(tip, "^" .. ITEM_TAGS.TOKEN_RWD) then
+                    local rwdParts = {}
+                    local rwdTotal = 0
+                    local rwdMax = hasShift and 8 or 4
+                    for rStr in rawTokRwd:gmatch("([^,]+)") do
+                        local rid = tonumber(rStr)
+                        if rid and rid > 0 then
+                            rwdTotal = rwdTotal + 1
+                            if #rwdParts < rwdMax then
+                                local rName = determineReagentName(rid)
+                                local hasCol = verifyItemCollectionStatus(rid, nil, true)
+                                local colMark = hasCol and (" " .. compat.CheckIcon()) or ""
+                                rwdParts[#rwdParts + 1] = format("|cffEDF4F7%s|r%s", rName, colMark)
+                            end
                         end
                     end
+                    if #rwdParts > 0 then
+                        local moreTxt = (rwdTotal > #rwdParts) and format(" |cff8398A6(+%d)|r", rwdTotal - #rwdParts) or ""
+                        tip:AddLine(format("%s|cff8398A6%s:|r %s%s", ITEM_TAGS.TOKEN_RWD, resolveExtraLocaleText("tokenReward"), table.concat(rwdParts, " |cff8398A6·|r "), moreTxt))
+                    end
                 end
-                if #rwdParts > 0 then
-                    local moreTxt = (rwdTotal > #rwdParts) and format(" |cff8398A6(+%d)|r", rwdTotal - #rwdParts) or ""
-                    tip:AddLine(format("%s|cff8398A6%s:|r %s%s", ITEM_TAGS.TOKEN_RWD, resolveExtraLocaleText("tokenReward"), table.concat(rwdParts, " |cff8398A6·|r "), moreTxt))
-                end
-            end
             
-            -- the dungeon's collection line (Shift only opens the "+N more" lists)
-            if primaryLocKey and primaryLocKey < 0 and not addon:FindLine(tip, "^" .. ITEM_TAGS.ZONE_COL) then
-                local zSummary, _, zPending = resolveZoneCollectionSummary(primaryLocKey)
-                local zLabel = (primaryLocKey < 0) and resolveExtraLocaleText("instCollect") or resolveExtraLocaleText("zoneCollect")
-                if zSummary then
-                    tip:AddLine(format("%s|cffA7B9C5%s:|r %s", ITEM_TAGS.ZONE_COL, zLabel, zSummary))
-                elseif zPending and addon.ZoneLoadingLine then
-                    -- counted a moment later: the row is kept for it
-                    tip:AddLine(addon.ZoneLoadingLine(tip, primaryLocKey, zLabel))
-                end
-            end
-        end
-        if not containsUsedIn and not ItemQuestEnricher.professionRecipesCovers("usedIn", tip, itemID)
-            and not addon:FindLine(tip, "^" .. ITEM_TAGS.USED_IN) then
-            local usedInLine = composeReagentUsage(itemID)
-            if usedInLine then
-                tip:AddLine(format("%s|cff8398A6%s:|r %s", ITEM_TAGS.USED_IN, resolveExtraLocaleText("usedIn"), usedInLine))
-            end
-        end
-    end
-
-    if queryItemCountAPI then
-        local targetKey = itemID or link
-        local ok1, bagCount = pcall(queryItemCountAPI, targetKey, false)
-        local ok2, totalCount = pcall(queryItemCountAPI, targetKey, true)
-        bagCount = ok1 and tonumber(nosecret(bagCount)) or 0
-        totalCount = ok2 and tonumber(nosecret(totalCount)) or bagCount
-        ownedBagCount = bagCount
-        if not containsBagCount and (not iCfg or iCfg.showBagCount ~= false) then
-            if not (statusText and (statusText:find("보유", 1, true) or statusText:find("Owned", 1, true))) then
-                if totalCount > 0 and not addon:FindLine(tip, "^" .. ITEM_TAGS.BAG_COUNT) then
-                    local bankCount = math.max(0, totalCount - bagCount)
-                    local countStr
-                    if bankCount > 0 then
-                        countStr = format(resolveExtraLocaleText("bagFmt"), totalCount, bagCount, bankCount)
-                    else
-                        countStr = format(resolveExtraLocaleText("bagOnlyFmt"), bagCount)
+                -- the dungeon's collection line (Shift only opens the "+N more" lists)
+                if primaryLocKey and primaryLocKey < 0 and not addon:FindLine(tip, "^" .. ITEM_TAGS.ZONE_COL) then
+                    local zSummary, _, zPending = resolveZoneCollectionSummary(primaryLocKey)
+                    local zLabel = (primaryLocKey < 0) and resolveExtraLocaleText("instCollect") or resolveExtraLocaleText("zoneCollect")
+                    if zSummary then
+                        tip:AddLine(format("%s|cffA7B9C5%s:|r %s", ITEM_TAGS.ZONE_COL, zLabel, zSummary))
+                    elseif zPending and addon.ZoneLoadingLine then
+                        -- counted a moment later: the row is kept for it (and these lines are worked out again)
+                        final = false
+                        tip:AddLine(addon.ZoneLoadingLine(tip, primaryLocKey, zLabel))
                     end
-                    tip:AddLine(format("%s|cffA7B9C5%s:|r |cffEDF4F7%s|r", ITEM_TAGS.BAG_COUNT, resolveExtraLocaleText("bagCount"), countStr))
+                end
+            end
+            if not containsUsedIn and not ItemQuestEnricher.professionRecipesCovers("usedIn", tip, itemID)
+                and not addon:FindLine(tip, "^" .. ITEM_TAGS.USED_IN) then
+                local usedInLine = composeReagentUsage(itemID)
+                if usedInLine then
+                    tip:AddLine(format("%s|cff8398A6%s:|r %s", ITEM_TAGS.USED_IN, resolveExtraLocaleText("usedIn"), usedInLine))
                 end
             end
         end
-    end
 
-    local itemBindType, itemClassID
-    if compat.GetItemInfo then
-        -- name, link, quality, level, min level, type, subtype, stack size, slot, icon, sell price, class, subclass, bind
-        local isCallOk, _, _, _, _, _, _, _, itemStackCount, _, _, itemSellPrice, classID, _, bindType = pcall(compat.GetItemInfo, itemID or link)
-        if isCallOk then
-            itemBindType = tonumber(nosecret(bindType))
-            itemClassID = tonumber(nosecret(classID))
-            if not iCfg or iCfg.showItemDetails ~= false then
-                local stack = tonumber(nosecret(itemStackCount)) or 0
-                local price = tonumber(nosecret(itemSellPrice)) or 0
-                -- the game's own sell price line shows only the stack's total: for a
-                -- stack (or when that line is missing) the price of one and of the stack.
-                -- The stack under the mouse, not every one owned (a link, a loot slot or
-                -- two rings in the bags are one each)
-                local sellQty = stack > 1 and ItemQuestEnricher.resolveHoveredSlotStackCount(nil) or 1
-                if price > 0 and (sellQty > 1 or not containsSellPrice) and not addon:FindLine(tip, "^" .. ITEM_TAGS.SELL_PRICE) then
-                    local moneyStr = ItemQuestEnricher.composeEachAndStack(price, sellQty)
-                    if moneyStr then
-                        tip:AddLine(format("%s|cffA7B9C5%s:|r %s", ITEM_TAGS.SELL_PRICE, resolveExtraLocaleText("sellPrice"), moneyStr))
+        if queryItemCountAPI then
+            local targetKey = itemID or link
+            local ok1, bagCount = pcall(queryItemCountAPI, targetKey, false)
+            local ok2, totalCount = pcall(queryItemCountAPI, targetKey, true)
+            bagCount = ok1 and tonumber(nosecret(bagCount)) or 0
+            totalCount = ok2 and tonumber(nosecret(totalCount)) or bagCount
+            ownedBagCount = bagCount
+            if not containsBagCount and (not iCfg or iCfg.showBagCount ~= false) then
+                if not (statusText and (statusText:find("보유", 1, true) or statusText:find("Owned", 1, true))) then
+                    if totalCount > 0 and not addon:FindLine(tip, "^" .. ITEM_TAGS.BAG_COUNT) then
+                        local bankCount = math.max(0, totalCount - bagCount)
+                        local countStr
+                        if bankCount > 0 then
+                            countStr = format(resolveExtraLocaleText("bagFmt"), totalCount, bagCount, bankCount)
+                        else
+                            countStr = format(resolveExtraLocaleText("bagOnlyFmt"), bagCount)
+                        end
+                        tip:AddLine(format("%s|cffA7B9C5%s:|r |cffEDF4F7%s|r", ITEM_TAGS.BAG_COUNT, resolveExtraLocaleText("bagCount"), countStr))
                     end
                 end
             end
         end
-    end
 
-    -- what a vendor asks for it (items NPCs sell; the game gives addons no buy price)
-    local buyEntry = itemID and addon.BuyPriceDB and addon.BuyPriceDB[itemID]
-    if buyEntry and (not iCfg or iCfg.showItemDetails ~= false) and not addon:FindLine(tip, "^" .. ITEM_TAGS.BUY_PRICE) then
-        local buyPrice, buyCount = buyEntry, 1
-        if type(buyEntry) == "table" then buyPrice, buyCount = buyEntry[1], buyEntry[2] or 1 end
-        -- the stack under the mouse (a shop's or a bag's), not every one owned
-        local buyQty = ItemQuestEnricher.resolveHoveredSlotStackCount(nil)
-        local unitBuy = buyPrice / buyCount
-        local buyStr
-        if unitBuy >= 1 and unitBuy == math.floor(unitBuy) then
-            buyStr = ItemQuestEnricher.composeEachAndStack(unitBuy, buyQty)
-        else
-            -- less than a copper each (arrows, bullets): the price of one purchase
-            local bundleMoney = addon.FormatCopperAsCoinIcons(buyPrice)
-            if bundleMoney and bundleMoney ~= "" then
-                buyStr = bundleMoney .. " |cff8398A6" .. format(resolveExtraLocaleText("buyCountFmt"), buyCount) .. "|r"
-            end
-        end
-        if buyStr then
-            tip:AddLine(format("%s|cffA7B9C5%s:|r %s", ITEM_TAGS.BUY_PRICE, resolveExtraLocaleText("buyPrice"), buyStr))
-        end
-    end
-
-    if itemID and (not iCfg or iCfg.showAuctionPrice ~= false) and not addon:FindLine(tip, "^" .. ITEM_TAGS.AH_PRICE) then
-        local prices = EzWoW_TooltipDB and EzWoW_TooltipDB.auctionPrices
-        local rawEntry = prices and (prices[itemID] or prices[tostring(itemID)])
-        local unitPrice = type(rawEntry) == "table" and tonumber(rawEntry.buyout or rawEntry.p) or tonumber(rawEntry)
-        if unitPrice and unitPrice > 0 then
-            local unitMoney = addon.FormatCopperAsCoinIcons(unitPrice)
-            if unitMoney and unitMoney ~= "" then
-                local stackQty = ItemQuestEnricher.resolveHoveredSlotStackCount(ownedBagCount)
-                local priceStr = unitMoney
-                if stackQty and stackQty > 1 then
-                    local stackMoney = addon.FormatCopperAsCoinIcons(unitPrice * stackQty)
-                    if stackMoney and stackMoney ~= "" then
-                        priceStr = format("%s |cff8398A6(×%d: %s)|r", unitMoney, stackQty, stackMoney)
+        local itemBindType, itemClassID
+        if compat.GetItemInfo then
+            -- name, link, quality, level, min level, type, subtype, stack size, slot, icon, sell price, class, subclass, bind
+            local isCallOk, _, _, _, _, _, _, _, itemStackCount, _, _, itemSellPrice, classID, _, bindType = pcall(compat.GetItemInfo, itemID or link)
+            if isCallOk then
+                itemBindType = tonumber(nosecret(bindType))
+                itemClassID = tonumber(nosecret(classID))
+                if not iCfg or iCfg.showItemDetails ~= false then
+                    local stack = tonumber(nosecret(itemStackCount)) or 0
+                    local price = tonumber(nosecret(itemSellPrice)) or 0
+                    -- the game's own sell price line shows only the stack's total: for a
+                    -- stack (or when that line is missing) the price of one and of the stack.
+                    -- The stack under the mouse, not every one owned (a link, a loot slot or
+                    -- two rings in the bags are one each)
+                    local sellQty = stack > 1 and ItemQuestEnricher.resolveHoveredSlotStackCount(nil) or 1
+                    if price > 0 and (sellQty > 1 or not containsSellPrice) and not addon:FindLine(tip, "^" .. ITEM_TAGS.SELL_PRICE) then
+                        local moneyStr = ItemQuestEnricher.composeEachAndStack(price, sellQty)
+                        if moneyStr then
+                            tip:AddLine(format("%s|cffA7B9C5%s:|r %s", ITEM_TAGS.SELL_PRICE, resolveExtraLocaleText("sellPrice"), moneyStr))
+                        end
                     end
                 end
-                local times = EzWoW_TooltipDB and EzWoW_TooltipDB.auctionTimes
-                local seenTs = (type(rawEntry) == "table" and tonumber(rawEntry.seen or rawEntry.t))
-                    or (times and tonumber(times[itemID] or times[tostring(itemID)]))
-                    or (EzWoW_TooltipDB and tonumber(EzWoW_TooltipDB.auctionLastScan))
-                local ageTxt = ItemQuestEnricher.composeRelativeAge(seenTs)
-                local trendTxt = bagsPriceTrend(itemID)
-                if trendTxt then priceStr = priceStr .. "  " .. trendTxt end
-                tip:AddLine(format("%s|cffA7B9C5%s:|r %s%s", ITEM_TAGS.AH_PRICE, resolveExtraLocaleText("auctionPrice"), priceStr, ageTxt))
             end
-        elseif itemBindType ~= 1 and itemBindType ~= 4 and itemClassID ~= 12 then
-            local lastScan = EzWoW_TooltipDB and tonumber(EzWoW_TooltipDB.auctionLastScan)
-            local hasKo = (resolveActiveLocale() == "koKR")
-            if lastScan and lastScan > 0 then
-                local extraNo = addon.EXTRA_LOCALE and addon.EXTRA_LOCALE[resolveActiveLocale()]
-                local noListingTxt = hasKo and "|cff8398A6등록된 매물 없음|r" or ("|cff8398A6" .. ((extraNo and extraNo.ahNoListing) or "No active listings") .. "|r")
-                tip:AddLine(format("%s|cffA7B9C5%s:|r %s%s", ITEM_TAGS.AH_PRICE, resolveExtraLocaleText("auctionPrice"), noListingTxt, ItemQuestEnricher.composeRelativeAge(lastScan)))
+        end
+
+        -- what a vendor asks for it (items NPCs sell; the game gives addons no buy price)
+        local buyEntry = itemID and addon.BuyPriceDB and addon.BuyPriceDB[itemID]
+        if buyEntry and (not iCfg or iCfg.showItemDetails ~= false) and not addon:FindLine(tip, "^" .. ITEM_TAGS.BUY_PRICE) then
+            local buyPrice, buyCount = buyEntry, 1
+            if type(buyEntry) == "table" then buyPrice, buyCount = buyEntry[1], buyEntry[2] or 1 end
+            -- the stack under the mouse (a shop's or a bag's), not every one owned
+            local buyQty = ItemQuestEnricher.resolveHoveredSlotStackCount(nil)
+            local unitBuy = buyPrice / buyCount
+            local buyStr
+            if unitBuy >= 1 and unitBuy == math.floor(unitBuy) then
+                buyStr = ItemQuestEnricher.composeEachAndStack(unitBuy, buyQty)
             else
-                local extraScan = addon.EXTRA_LOCALE and addon.EXTRA_LOCALE[resolveActiveLocale()]
-                local needScanTxt = hasKo and "|cff8398A6미수집 (경매장 방문 시 자동 수집)|r" or ("|cff8398A6" .. ((extraScan and extraScan.ahNotScanned) or "Not scanned yet (open AH to collect)") .. "|r")
-                tip:AddLine(format("%s|cffA7B9C5%s:|r %s", ITEM_TAGS.AH_PRICE, resolveExtraLocaleText("auctionPrice"), needScanTxt))
+                -- less than a copper each (arrows, bullets): the price of one purchase
+                local bundleMoney = addon.FormatCopperAsCoinIcons(buyPrice)
+                if bundleMoney and bundleMoney ~= "" then
+                    buyStr = bundleMoney .. " |cff8398A6" .. format(resolveExtraLocaleText("buyCountFmt"), buyCount) .. "|r"
+                end
+            end
+            if buyStr then
+                tip:AddLine(format("%s|cffA7B9C5%s:|r %s", ITEM_TAGS.BUY_PRICE, resolveExtraLocaleText("buyPrice"), buyStr))
             end
         end
-    end
 
-    -- EzWoW-ProfessionRecipes: what it costs to make, right under the auction price (its own setting)
-    if itemID and not addon:FindLine(tip, "^" .. ITEM_TAGS.CRAFT_COST) then
-        local pr = _G.EzWoW_ProfessionRecipes
-        if type(pr) == "table" and type(pr.CraftCostTooltipLine) == "function" then
-            local okCraft, craftLine = pcall(pr.CraftCostTooltipLine, tip, itemID)
-            if okCraft and type(craftLine) == "string" and craftLine ~= "" then
-                tip:AddLine(ITEM_TAGS.CRAFT_COST .. craftLine, 1, 1, 1)
+        if itemID and (not iCfg or iCfg.showAuctionPrice ~= false) and not addon:FindLine(tip, "^" .. ITEM_TAGS.AH_PRICE) then
+            local prices = EzWoW_TooltipDB and EzWoW_TooltipDB.auctionPrices
+            local rawEntry = prices and (prices[itemID] or prices[tostring(itemID)])
+            local unitPrice = type(rawEntry) == "table" and tonumber(rawEntry.buyout or rawEntry.p) or tonumber(rawEntry)
+            if unitPrice and unitPrice > 0 then
+                local unitMoney = addon.FormatCopperAsCoinIcons(unitPrice)
+                if unitMoney and unitMoney ~= "" then
+                    local stackQty = ItemQuestEnricher.resolveHoveredSlotStackCount(ownedBagCount)
+                    local priceStr = unitMoney
+                    if stackQty and stackQty > 1 then
+                        local stackMoney = addon.FormatCopperAsCoinIcons(unitPrice * stackQty)
+                        if stackMoney and stackMoney ~= "" then
+                            priceStr = format("%s |cff8398A6(×%d: %s)|r", unitMoney, stackQty, stackMoney)
+                        end
+                    end
+                    local times = EzWoW_TooltipDB and EzWoW_TooltipDB.auctionTimes
+                    local seenTs = (type(rawEntry) == "table" and tonumber(rawEntry.seen or rawEntry.t))
+                        or (times and tonumber(times[itemID] or times[tostring(itemID)]))
+                        or (EzWoW_TooltipDB and tonumber(EzWoW_TooltipDB.auctionLastScan))
+                    local ageTxt = ItemQuestEnricher.composeRelativeAge(seenTs)
+                    local trendTxt = bagsPriceTrend(itemID)
+                    if trendTxt then priceStr = priceStr .. "  " .. trendTxt end
+                    tip:AddLine(format("%s|cffA7B9C5%s:|r %s%s", ITEM_TAGS.AH_PRICE, resolveExtraLocaleText("auctionPrice"), priceStr, ageTxt))
+                end
+            elseif itemBindType ~= 1 and itemBindType ~= 4 and itemClassID ~= 12 then
+                local lastScan = EzWoW_TooltipDB and tonumber(EzWoW_TooltipDB.auctionLastScan)
+                local hasKo = (resolveActiveLocale() == "koKR")
+                if lastScan and lastScan > 0 then
+                    local extraNo = addon.EXTRA_LOCALE and addon.EXTRA_LOCALE[resolveActiveLocale()]
+                    local noListingTxt = hasKo and "|cff8398A6등록된 매물 없음|r" or ("|cff8398A6" .. ((extraNo and extraNo.ahNoListing) or "No active listings") .. "|r")
+                    tip:AddLine(format("%s|cffA7B9C5%s:|r %s%s", ITEM_TAGS.AH_PRICE, resolveExtraLocaleText("auctionPrice"), noListingTxt, ItemQuestEnricher.composeRelativeAge(lastScan)))
+                else
+                    local extraScan = addon.EXTRA_LOCALE and addon.EXTRA_LOCALE[resolveActiveLocale()]
+                    local needScanTxt = hasKo and "|cff8398A6미수집 (경매장 방문 시 자동 수집)|r" or ("|cff8398A6" .. ((extraScan and extraScan.ahNotScanned) or "Not scanned yet (open AH to collect)") .. "|r")
+                    tip:AddLine(format("%s|cffA7B9C5%s:|r %s", ITEM_TAGS.AH_PRICE, resolveExtraLocaleText("auctionPrice"), needScanTxt))
+                end
             end
         end
-    end
+
+        -- EzWoW-ProfessionRecipes: what it costs to make, right under the auction price (its own setting)
+        if itemID and not addon:FindLine(tip, "^" .. ITEM_TAGS.CRAFT_COST) then
+            local pr = _G.EzWoW_ProfessionRecipes
+            if type(pr) == "table" and type(pr.CraftCostTooltipLine) == "function" then
+                local okCraft, craftLine = pcall(pr.CraftCostTooltipLine, tip, itemID)
+                if okCraft and type(craftLine) == "string" and craftLine ~= "" then
+                    tip:AddLine(ITEM_TAGS.CRAFT_COST .. craftLine, 1, 1, 1)
+                end
+            end
+        end
+        return final
+    end)
 
     if (tip:NumLines() or 0) > linesBefore then
         addon.AttributeTooltip(tip)

@@ -97,6 +97,14 @@ function EventDispatcher:trigger(signalName, ...)
             local okHold, isHeld = pcall(hold, signalName, ...)
             if okHold and isHeld then return end
         end
+        -- the name line once, below every subscriber's lines (Core/Base.lua AttributeTooltip)
+        local engine, tip = _G.EzWoW_Tooltip, ...
+        if type(engine) == "table" and type(engine.BeginAttributionBatch) == "function" and type(tip) == "table" then
+            engine.BeginAttributionBatch(tip)
+            pcall(EventDispatcher.invokeSubscribers, signalSubscribers[signalName], ...)
+            engine.EndAttributionBatch(tip)
+            return
+        end
     end
     EventDispatcher.invokeSubscribers(signalSubscribers[signalName], ...)
 end

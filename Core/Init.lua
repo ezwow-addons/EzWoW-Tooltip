@@ -31,6 +31,12 @@ end
 function CoreBootstrap.sanitizeSavedConfig(configTbl)
     local gen = configTbl and configTbl.general
     if type(gen) ~= "table" then return end
+    -- the show delay's old default 0.25 s becomes the new one, once (2026-11-27: tooltips came up
+    -- later than the game's own; a value chosen after this stays)
+    if gen.hoverDelayFrom025 == nil then
+        if tonumber(gen.hoverDelay) == 0.25 then gen.hoverDelay = 0.1 end
+        gen.hoverDelayFrom025 = true
+    end
 
     local barTex = gen.statusbarTexture
     if type(barTex) == "string" then

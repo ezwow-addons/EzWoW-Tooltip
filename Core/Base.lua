@@ -410,9 +410,39 @@ _G.EzWoWTooltipAttribute = function(tipFrame)
     if TooltipEngine.AttributeTooltip then return TooltipEngine.AttributeTooltip(tipFrame) end
 end
 
+-- Inside one info signal (Core/EventBus.lua: tooltip:item / spell / unit) each part that adds lines asks
+-- for the name line; it is added once when the signal is done, below all of them. Added after the first
+-- part, every later row had to move up one place (texts read back and written again, sizes fitted again,
+-- the tooltip laid out again), on each 0.2 s refill of a bag slot or a bar button tooltip.
+local attributionBatch = PlatformBridge.weakTable()     -- tooltip -> info signals still running
+local attributionAsked = PlatformBridge.weakTable()     -- tooltip -> the name line was asked for meanwhile
+
+function TooltipEngine.BeginAttributionBatch(tipFrame)
+    if type(tipFrame) ~= "table" then return end
+    attributionBatch[tipFrame] = (attributionBatch[tipFrame] or 0) + 1
+end
+
+function TooltipEngine.EndAttributionBatch(tipFrame)
+    if type(tipFrame) ~= "table" or not attributionBatch[tipFrame] then return end
+    local depth = attributionBatch[tipFrame] - 1
+    if depth > 0 then
+        attributionBatch[tipFrame] = depth
+        return
+    end
+    attributionBatch[tipFrame] = nil
+    if not attributionAsked[tipFrame] then return end
+    attributionAsked[tipFrame] = nil
+    TooltipEngine.AttributeTooltip(tipFrame)
+    if tipFrame.IsShown and tipFrame:IsShown() and tipFrame.Show then pcall(tipFrame.Show, tipFrame) end
+end
+
 -- Call after adding lines to a tooltip (before its :Show()). Hidden scan tooltips are skipped.
 function TooltipEngine.AttributeTooltip(tipFrame)
     if not TooltipEngine.IsDecoratableTooltip(tipFrame) then return end
+    if attributionBatch[tipFrame] then
+        attributionAsked[tipFrame] = true
+        return
+    end
     if type(tipFrame.NumLines) ~= "function" or type(tipFrame.AddDoubleLine) ~= "function" then return end
     if not attributionClearHooked[tipFrame] and tipFrame.HasScript and tipFrame:HasScript("OnTooltipCleared") then
         attributionClearHooked[tipFrame] = true
@@ -466,6 +496,74 @@ function TooltipEngine.AttributeTooltip(tipFrame)
     -- rows keep the size of the text they had: laid out again for the text
     -- they hold now (else a longer one is cut with "...")
     if tipFrame.IsShown and tipFrame:IsShown() and tipFrame.Show then pcall(tipFrame.Show, tipFrame) end
+end
+
+-- The game fills a bag slot's or a bar button's tooltip again every 0.2 s while the mouse rests on it
+-- (owner:UpdateTooltip). The lines a part of this addon adds for the same thing then come again from the
+-- last fill for FILL_REUSE_FOR seconds instead of being worked out again (2026-11-27: on a piece of gear
+-- and its comparison tooltips that work came five times a second while the mouse rested on it).
+-- They come again through the very calls that added them (AddLine / AddDoubleLine and all their
+-- arguments, seen while compute() runs). Rows read back lost how they were added: CanWordWrap() is true
+-- on this client also for a line added without wrap, so every reused line wrapped, the tooltip went narrow
+-- and tall and wide again at the next worked-out fill, jumped to the other side of the mouse, and a piece
+-- of gear's comparison tooltip went away for a moment (2026-11-27 user video).
+-- key: what the lines depend on (nil: never reused). compute() adds the lines and answers false when they
+-- are not final yet (a row still loading), so the next fill works them out again. -> true when reused
+local FILL_REUSE_FOR = 1.0
+local lastFills = PlatformBridge.weakTable()    -- tooltip -> { key, at, base, calls }
+local fillCalls = PlatformBridge.weakTable()    -- tooltip -> its AddLine / AddDoubleLine calls while compute() runs
+local fillHooked = PlatformBridge.weakTable()   -- tooltip -> true: those calls are seen, false: they cannot be
+
+local function fillCallRecorder(isDouble)
+    return function(tipFrame, ...)
+        local calls = fillCalls[tipFrame]
+        if calls then calls[#calls + 1] = { isDouble, select("#", ...), ... } end
+    end
+end
+local recordLine, recordDoubleLine = fillCallRecorder(false), fillCallRecorder(true)
+
+-- a post hook on the tooltip's own AddLine / AddDoubleLine (it only looks while compute() runs)
+local function seeFillCalls(tipFrame)
+    local hooked = fillHooked[tipFrame]
+    if hooked ~= nil then return hooked end
+    hooked = (type(hooksecurefunc) == "function" and type(tipFrame.AddLine) == "function"
+        and type(tipFrame.AddDoubleLine) == "function"
+        and pcall(hooksecurefunc, tipFrame, "AddLine", recordLine)
+        and pcall(hooksecurefunc, tipFrame, "AddDoubleLine", recordDoubleLine)) == true
+    fillHooked[tipFrame] = hooked
+    return hooked
+end
+
+function TooltipEngine.FillLines(tipFrame, key, compute)
+    local okNum, base = pcall(tipFrame.NumLines, tipFrame)
+    base = okNum and tonumber(PlatformBridge.nosecret(base)) or nil
+    local now = GetTime and GetTime() or 0
+    local last = lastFills[tipFrame]
+    if last and key ~= nil and last.key == key and base == last.base and now >= last.at and now - last.at < FILL_REUSE_FOR then
+        for _, call in ipairs(last.calls) do
+            local addRow = call[1] and tipFrame.AddDoubleLine or tipFrame.AddLine
+            addRow(tipFrame, unpackValues(call, 3, call[2] + 2))
+        end
+        return true
+    end
+    lastFills[tipFrame] = nil
+    -- worked out without keeping: no key, a fill inside this tooltip's own fill, or calls that cannot be seen
+    if key == nil or not base or fillCalls[tipFrame] or not seeFillCalls(tipFrame) then
+        compute()
+        return false
+    end
+    local calls = {}
+    fillCalls[tipFrame] = calls
+    local okCompute, final = pcall(compute)
+    fillCalls[tipFrame] = nil
+    if not okCompute then error(final, 0) end
+    local okAfter, after = pcall(tipFrame.NumLines, tipFrame)
+    after = okAfter and tonumber(PlatformBridge.nosecret(after)) or nil
+    -- kept only when every new row came from a seen call (rows changed another way are worked out again)
+    if final ~= false and after and after - base == #calls then
+        lastFills[tipFrame] = { key = key, at = now, base = base, calls = calls }
+    end
+    return false
 end
 
 -- A group token ("party1") can be locked inside instances while the same person
